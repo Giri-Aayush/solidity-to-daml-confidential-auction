@@ -1,0 +1,10 @@
+# Foundry
+solidity/out/
+solidity/cache/
+solidity/broadcast/
+
+# Daml
+daml/.daml/
+
+# OS / editor
+.DS_Store
