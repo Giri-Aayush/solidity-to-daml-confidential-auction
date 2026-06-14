@@ -1,0 +1,148 @@
+-- | Daml Script tests for the Confidential Auction.
+--
+-- The headline test is `privacyAndSettlement`: it proves on a running ledger
+-- that one bidder sees *exactly their own* bid and nothing else. That is the
+-- property the Solidity contract can only approximate with commit/reveal,
+-- expressed here as a handful of assertions on a live ledger.
+module Test where
+
+import ConfidentialAuction
+import Daml.Script
+import DA.Assert ((===))
+
+-- | Sealed bids stay private (content, not just count), the highest bid wins at
+-- settlement, losing bids are cleared, and only the winner learns the outcome.
+privacyAndSettlement : Script ()
+privacyAndSettlement = script do
+  auctioneer <- allocateParty "Auctioneer"
+  alice <- allocateParty "Alice"
+  bob <- allocateParty "Bob"
+  carol <- allocateParty "Carol"
+
+  auctionCid <- submit auctioneer do
+    createCmd Auction with
+      auctioneer
+      auctionId = "PAINTING-2026"
+      item = "Rare painting"
+      invited = [alice, bob, carol]
+      biddingOpen = True
+
+  -- Three independent, sealed submissions. No commit hash, no deposit, no
+  -- reveal phase — each bidder simply states their amount.
+  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 30.0
+  bobBid <- submit bob do exerciseCmd auctionCid PlaceBid with bidder = bob, amount = 50.0
+  carolBid <- submit carol do exerciseCmd auctionCid PlaceBid with bidder = carol, amount = 40.0
+
+  -- THE POINT: each bidder sees exactly their OWN bid — asserted by content, not
+  -- merely a count. A leak that surfaced Bob's bid to Alice (same count) would
+  -- be caught because we check the bidder and amount are hers.
+  aliceView <- query @Bid alice
+  case aliceView of
+    [(_, bid)] -> do
+      bid.bidder === alice
+      bid.amount === 30.0
+    _ -> abort ("Alice must see exactly her own bid; saw " <> show (length aliceView))
+
+  bobView <- query @Bid bob
+  case bobView of
+    [(_, bid)] -> bid.bidder === bob
+    _ -> abort "Bob must see exactly his own bid"
+
+  -- The auctioneer, a signatory on every bid, sees all three.
+  auctioneerView <- query @Bid auctioneer
+  length auctioneerView === 3
+
+  -- Close bidding (required before settlement), then settle.
+  closedCid <- submit auctioneer do exerciseCmd auctionCid CloseBidding
+  resultCid <- submit auctioneer do
+    exerciseCmd closedCid Settle with bidCids = [aliceBid, bobBid, carolBid]
+
+  Some result <- queryContractId auctioneer resultCid
+  result.winner === bob
+  result.winningAmount === 50.0
+
+  -- Losing (and winning) bids were actually cleared by settlement.
+  remaining <- query @Bid auctioneer
+  length remaining === 0
+
+  -- Outcome is need-to-know: the winner sees it, and NEITHER loser does.
+  bobResult <- query @AuctionResult bob
+  length bobResult === 1
+  aliceResult <- query @AuctionResult alice
+  length aliceResult === 0
+  carolResult <- query @AuctionResult carol
+  length carolResult === 0
+
+  pure ()
+
+-- | A party who was not invited cannot even see the auction, let alone bid.
+nonInvitedCannotBid : Script ()
+nonInvitedCannotBid = script do
+  auctioneer <- allocateParty "Auctioneer"
+  alice <- allocateParty "Alice"
+  mallory <- allocateParty "Mallory"
+
+  auctionCid <- submit auctioneer do
+    createCmd Auction with
+      auctioneer
+      auctionId = "PAINTING-2026"
+      item = "Rare painting"
+      invited = [alice]
+      biddingOpen = True
+
+  mallory `submitMustFail` exerciseCmd auctionCid PlaceBid with bidder = mallory, amount = 999.0
+
+-- | Once the auctioneer closes bidding, late bids are rejected.
+closedBiddingRejectsLateBids : Script ()
+closedBiddingRejectsLateBids = script do
+  auctioneer <- allocateParty "Auctioneer"
+  alice <- allocateParty "Alice"
+
+  auctionCid <- submit auctioneer do
+    createCmd Auction with
+      auctioneer
+      auctionId = "PAINTING-2026"
+      item = "Rare painting"
+      invited = [alice]
+      biddingOpen = True
+
+  closedCid <- submit auctioneer do exerciseCmd auctionCid CloseBidding
+
+  alice `submitMustFail` exerciseCmd closedCid PlaceBid with bidder = alice, amount = 10.0
+
+-- | Settlement is refused while bidding is still open (fairness: no settling
+-- before late bidders have had their chance).
+cannotSettleWhileOpen : Script ()
+cannotSettleWhileOpen = script do
+  auctioneer <- allocateParty "Auctioneer"
+  alice <- allocateParty "Alice"
+
+  auctionCid <- submit auctioneer do
+    createCmd Auction with
+      auctioneer
+      auctionId = "PAINTING-2026"
+      item = "Rare painting"
+      invited = [alice]
+      biddingOpen = True
+
+  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 10.0
+
+  auctioneer `submitMustFail` exerciseCmd auctionCid Settle with bidCids = [aliceBid]
+
+-- | A bidder gets exactly one live bid per auction; a second PlaceBid fails on
+-- the duplicate Bid key.
+oneBidPerBidder : Script ()
+oneBidPerBidder = script do
+  auctioneer <- allocateParty "Auctioneer"
+  alice <- allocateParty "Alice"
+
+  auctionCid <- submit auctioneer do
+    createCmd Auction with
+      auctioneer
+      auctionId = "PAINTING-2026"
+      item = "Rare painting"
+      invited = [alice]
+      biddingOpen = True
+
+  _ <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 10.0
+  alice `submitMustFail` exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 20.0
