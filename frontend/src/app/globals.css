@@ -1,0 +1,267 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------ *
+ *  Confidential Auction — "cryptographic ledger / institutional terminal"
+ *  Warm near-black canvas · bone ink · vault-amber (sealed/private) ·
+ *  signal-red (public/exposed). Display: Fraunces. Data: IBM Plex Mono.
+ * ------------------------------------------------------------------ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-display: var(--font-display);
+  --font-heading: var(--font-display);
+
+  /* bespoke palette tokens → enable text-vault, bg-signal, border-line, etc. */
+  --color-bg: var(--bg);
+  --color-bg-raised: var(--bg-raised);
+  --color-bg-sunken: var(--bg-sunken);
+  --color-vault: var(--vault);
+  --color-signal: var(--signal);
+  --color-bone: var(--bone);
+  --color-ink-faint: var(--ink-faint);
+  --color-line: var(--line);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
+  --radius-2xl: 10px;
+}
+
+:root {
+  --radius: 3px;
+
+  /* raw palette */
+  --bg: #0b0a09;
+  --bg-raised: #141210;
+  --bg-sunken: #070605;
+  --bone: #ece6da;
+  --ink-faint: #5c574d;
+  --line: #221f1b;
+  --vault: #e6ad3c;        /* sealed / private / Canton */
+  --signal: #d9543f;       /* public / exposed / EVM */
+
+  /* shadcn semantic tokens, mapped to the dark cryptographic theme */
+  --background: var(--bg);
+  --foreground: var(--bone);
+  --card: var(--bg-raised);
+  --card-foreground: var(--bone);
+  --popover: #161310;
+  --popover-foreground: var(--bone);
+  --primary: var(--vault);
+  --primary-foreground: #1a1408;
+  --secondary: #1d1a16;
+  --secondary-foreground: var(--bone);
+  --muted: #1a1714;
+  --muted-foreground: #9a9286;
+  --accent: #221f1a;
+  --accent-foreground: var(--bone);
+  --destructive: var(--signal);
+  --border: #26221d;
+  --input: #2a261f;
+  --ring: var(--vault);
+
+  --chart-1: var(--vault);
+  --chart-2: var(--signal);
+  --chart-3: #8fb46a;
+  --chart-4: #6f93c4;
+  --chart-5: #9a9286;
+
+  --sidebar: var(--bg-raised);
+  --sidebar-foreground: var(--bone);
+  --sidebar-primary: var(--vault);
+  --sidebar-primary-foreground: #1a1408;
+  --sidebar-accent: #221f1a;
+  --sidebar-accent-foreground: var(--bone);
+  --sidebar-border: #26221d;
+  --sidebar-ring: var(--vault);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(120% 80% at 50% -10%, rgba(230, 173, 60, 0.06), transparent 55%),
+      radial-gradient(100% 60% at 50% 120%, rgba(217, 84, 63, 0.04), transparent 60%);
+    background-attachment: fixed;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply text-foreground;
+    background: transparent;
+    font-feature-settings: "ss01", "cv01";
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: var(--vault);
+    color: #1a1408;
+  }
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
+
+/* ---- type helpers ---------------------------------------------------- */
+.font-display { font-family: var(--font-display); }
+.font-mono { font-family: var(--font-mono); }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--vault);
+}
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #9a9286;
+}
+
+/* ---- grain atmosphere ------------------------------------------------ */
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+/* hairline rule like ruled ledger paper */
+.rule {
+  border: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line) 12%, var(--line) 88%, transparent);
+}
+
+/* ---- the signature mechanic: REDACTION ------------------------------- */
+.redaction {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 2px;
+  color: transparent;
+  user-select: none;
+  min-width: 5.5rem;
+  background:
+    repeating-linear-gradient(90deg, #1c1814 0 7px, #14110d 7px 14px);
+  border: 1px solid #2a2118;
+  box-shadow: inset 0 0 0 1px rgba(230, 173, 60, 0.05);
+  overflow: hidden;
+}
+.redaction::before {
+  content: "▓▓▓▓▓▓▓▓▓▓";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding-inline: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  letter-spacing: -0.04em;
+  color: #3a3228;
+  animation: redact-shift 5.5s linear infinite;
+}
+.redaction::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(230, 173, 60, 0.12), transparent);
+  transform: translateX(-100%);
+  animation: redact-sweep 3.8s ease-in-out infinite;
+}
+@keyframes redact-shift { to { background-position: 28px 0; } }
+@keyframes redact-sweep {
+  0%, 60% { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+
+/* ---- entrance choreography ------------------------------------------ */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise { opacity: 0; animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) forwards; }
+
+@keyframes seal-in {
+  0% { opacity: 0; transform: scale(0.94) translateY(6px); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.seal-in { animation: seal-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+/* wax-seal dot that pulses on a sealed (private) contract */
+.seal-dot { position: relative; }
+.seal-dot::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 999px;
+  border: 1px solid rgba(230, 173, 60, 0.4);
+  animation: seal-ring 2.6s ease-out infinite;
+}
+@keyframes seal-ring {
+  0% { transform: scale(0.7); opacity: 0.8; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+/* thin custom scrollbar */
+* { scrollbar-width: thin; scrollbar-color: #2a261f transparent; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: #2a261f; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #3a352c; }
