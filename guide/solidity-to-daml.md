@@ -1,7 +1,7 @@
 # From Solidity to Daml: A Confidential Auction on Canton
 
-> A guide for Ethereum developers. We build the *same* sealed-bid auction twice —
-> once in Solidity for the EVM, once in Daml for Canton — and watch what happens
+> A guide for Ethereum developers. We build the *same* sealed-bid auction twice -
+> once in Solidity for the EVM, once in Daml for Canton - and watch what happens
 > to the code when the ledger itself can keep a secret.
 
 If you write Solidity, you already know how to think about auctions, escrow, and
@@ -22,15 +22,15 @@ Here is the same auction, both ways, measured by what the code spends its effort
 
 | | Solidity (`solidity/`) | Daml (`daml/`) |
 |---|---|---|
-| Lines of contract logic | ~150 | ~90 |
+| Lines of contract logic (excl. comments) | ~90 | ~70 |
 | Keeps bids secret using | commit/reveal + `keccak256` hashes | the ledger's privacy model |
 | Secrecy lasts | until the reveal phase (then public forever) | permanently (losers never see winning bid) |
-| Needs a deposit + forfeiture | yes — the only thing making commitments binding | no |
+| Needs a deposit + forfeiture | yes - the only thing making commitments binding | no |
 | Needs an explicit timeline (commit window, reveal window) | yes | no |
 | Reentrancy surface | `withdraw()`, `auctionEnd()` (pull-payment pattern) | none |
 | Who can read a bid | everyone, after reveal | only the auctioneer and that bidder, ever |
 
-Roughly **a third of the Solidity contract is privacy scaffolding** — hashing,
+Roughly **a third of the Solidity contract is privacy scaffolding** - hashing,
 deposits, the reveal phase, forfeiture. In Daml that scaffolding doesn't exist,
 because the thing it was simulating (a bid only some parties can see) is a
 primitive of the platform.
@@ -50,7 +50,7 @@ hide anything, you must encrypt or hash it yourself and reveal later.
 A contract is an immutable record on a *distributed* ledger. Each contract names
 its **signatories** (who must authorize and who are bound by it) and its
 **observers** (who may additionally see it). A party's "ledger" is exactly the
-set of contracts where they are a signatory or observer — and *nothing else*.
+set of contracts where they are a signatory or observer - and *nothing else*.
 There is no global readable state to leak.
 
 So the central question changes:
@@ -78,8 +78,8 @@ Keep this table next to you while reading both contracts.
 | `event Foo(...)` / `emit` | the transaction record itself + `observer`s | Stakeholders see the transaction; there's no separate event log to subscribe to for state. |
 | `block.timestamp` deadlines | application-layer timing / `getTime` in scripts | Canton has time, but our Daml model gates with an explicit `biddingOpen` flag the auctioneer flips. |
 | `address(this).balance`, `msg.value`, `call{value:}` | a separate asset/token model (not built into the ledger) | Daml has no native "ether." Value transfer is modeled as its own contracts (out of scope here). |
-| Reentrancy guards, pull-payment | — | No external calls mid-execution; the class of bug largely doesn't arise. |
-| `keccak256(abi.encodePacked(...))` commit | — | Deleted. Privacy is native, so there is nothing to commit to. |
+| Reentrancy guards, pull-payment | - | No external calls mid-execution; the class of bug largely doesn't arise. |
+| `keccak256(abi.encodePacked(...))` commit | - | Deleted. Privacy is native, so there is nothing to commit to. |
 
 ---
 
@@ -104,11 +104,11 @@ nonconsuming choice PlaceBid : ContractId Bid
   controller bidder                       -- only `bidder` can do this
   do
     assertMsg "bidder must be invited" (bidder `elem` invited)
-    create Bid with auctioneer, bidder, item, amount   -- signed by [auctioneer, bidder]
+    create Bid with auctioneer, auctionId, bidder, item, amount   -- signed by [auctioneer, bidder]
 ```
 
 The subtle, powerful part: the choice body runs with the **authority of the
-Auction's signatory (the auctioneer) plus the controller (the bidder)** — exactly
+Auction's signatory (the auctioneer) plus the controller (the bidder)** - exactly
 the two signatures the `Bid` needs. This *delegated authority* is how a single
 bidder transaction can create a contract co-signed by the auctioneer, without the
 auctioneer being online. There is no Solidity equivalent; it's the Daml feature
@@ -138,14 +138,16 @@ ledger:
 
 ```daml
 aliceView <- query @Bid alice
-length aliceView === 1          -- Alice sees only her own bid
+case aliceView of
+  [(_, bid)] -> bid.bidder === alice   -- Alice sees exactly one bid, and it's hers
+  _ -> abort "Alice should see only her own bid"
 auctioneerView <- query @Bid auctioneer
-length auctioneerView === 3     -- the auctioneer, a signatory on all, sees every bid
+length auctioneerView === 3            -- the auctioneer, a signatory on all, sees every bid
 ```
 
 Contrast the Solidity contract, which can only *delay* disclosure: bids are hashes
 until the reveal phase, then permanently public. On Canton the losing bids are
-*never* disclosed — `AuctionResult` is observed only by the winner, so losers don't
+*never* disclosed - `AuctionResult` is observed only by the winner, so losers don't
 even learn the clearing price. That's not extra work; it's the absence of work.
 
 ---
@@ -157,34 +159,36 @@ In Daml a choice can only see contracts explicitly handed to it, because privacy
 means there's no global set to iterate. So winner selection works in two moves:
 
 1. **Off-ledger**, the auctioneer (the only party who can see every `Bid`) gathers
-   the contract ids — in production via the Ledger API / a Canton app; in our test
+   the contract ids - in production via the Ledger API / a Canton app; in our test
    via `query @Bid`.
 2. **On-ledger**, it passes them to `Settle`, which fetches each, validates it
-   belongs to the auction, picks the max, clears the losers, and records the result:
+   belongs to the auction, picks the max, clears the bids, and records the result:
 
 ```daml
 choice Settle : ContractId AuctionResult
   with bidCids : [ContractId Bid]
   controller auctioneer
   do
-    bids <- forA bidCids \cid -> do
+    assertMsg "close bidding before settling" (not biddingOpen)
+    -- de-duplicate the caller's list so a repeated id can't double-clear a bid
+    let uniqueCids = foldl (\seen c -> if c `elem` seen then seen else seen <> [c]) [] bidCids
+    bids <- forA uniqueCids \cid -> do
       bid <- fetch cid
       assertMsg "bid does not belong to this auction"
-        (bid.auctioneer == auctioneer && bid.item == item)
+        (bid.auctioneer == auctioneer && bid.auctionId == auctionId)
       pure (cid, bid)
     case sortOn (\(_, bid) -> negate bid.amount) bids of
       [] -> abort "cannot settle an auction with no bids"
-      ((winningCid, winningBid) :: losers) -> do
-        forA losers \(cid, _) -> exercise cid Clear   -- clear losing bids
-        _ <- exercise winningCid Clear
+      ((_, winningBid) :: _) -> do
+        forA bids \(cid, _) -> exercise cid Clear   -- clear every bid
         create AuctionResult with
           auctioneer; item; winner = winningBid.bidder; winningAmount = winningBid.amount
 ```
 
-Note `exercise cid Clear` archives each losing `Bid`. The auctioneer can do this
-*alone* even though the bid is co-signed, because the bidder pre-authorized the
-`Clear` choice by signing the bid in the first place. That's the Daml answer to
-"how do I let one party clean up state another party created."
+Note `exercise cid Clear` archives a `Bid`. The auctioneer can do this *alone* even
+though the bid is co-signed, because the bidder pre-authorized the `Clear` choice by
+signing the bid in the first place. That's the Daml answer to "how do I let one
+party clean up state another party created."
 
 ---
 
@@ -192,15 +196,15 @@ Note `exercise cid Clear` archives each losing `Bid`. The auctioneer can do this
 
 If you came from the Solidity file, here's what you'll notice is *gone*, and why:
 
-- **The commit hash (`keccak256`)** — nothing to hide-then-reveal; the bid is born private.
-- **The reveal phase and its deadline** — there is no reveal, so no second window.
-- **Deposits and forfeiture** — these existed only to make a hidden commitment
+- **The commit hash (`keccak256`)** - nothing to hide-then-reveal; the bid is born private.
+- **The reveal phase and its deadline** - there is no reveal, so no second window.
+- **Deposits and forfeiture** - these existed only to make a hidden commitment
   *binding* and to punish non-revealers. A Daml bid is a real, authorized contract
   the instant it's created; there's nothing to enforce after the fact.
-- **`pendingReturns` / `withdraw()` / pull-payments** — no value is escrowed in the
+- **`pendingReturns` / `withdraw()` / pull-payments** - no value is escrowed in the
   contract, and there are no mid-execution external calls, so the reentrancy-driven
   pull-payment pattern isn't needed.
-- **The `ended` flag and `auctionEnd()` transfer** — settlement is a single atomic
+- **The `ended` flag and `auctionEnd()` transfer** - settlement is a single atomic
   choice; there's no "anyone can poke it after the deadline" finalizer.
 
 What's left in the Daml file is the auction and nothing but the auction.
@@ -220,7 +224,7 @@ Honesty matters more than a clean story:
   a reasonable next iteration.
 - **Discovery.** "Who are the bidders?" is an input here (the `invited` list). On a
   public EVM anyone can call; on Canton, parties and their visibility are managed
-  deliberately — which is a feature for institutional use cases, and a difference to
+  deliberately - which is a feature for institutional use cases, and a difference to
   design around for open ones.
 
 ---
@@ -228,10 +232,10 @@ Honesty matters more than a clean story:
 ## 9. Run both yourself
 
 ```bash
-# Solidity — 8 tests
+# Solidity - 12 tests
 cd solidity && forge test -vv
 
-# Daml — 3 scripts, including the privacy proof
+# Daml - 5 scripts, including the privacy proof
 cd daml && daml test
 ```
 

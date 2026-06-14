@@ -3,9 +3,9 @@ const ROWS: [string, string, string][] = [
   ["msg.sender", "choice controller", "authenticated by the ledger"],
   ["require(msg.sender == owner)", "controller / signatory", "authz is part of the type"],
   ["mutate storage", "archive + re-create", "contracts are immutable"],
-  ["keccak256 commit + reveal", "— nothing —", "privacy is native"],
-  ["deposits & forfeiture", "— nothing —", "a bid is already binding"],
-  ["pendingReturns / withdraw", "— nothing —", "no escrow, no reentrancy"],
+  ["keccak256 commit + reveal", "- nothing -", "privacy is native"],
+  ["deposits & forfeiture", "- nothing -", "a bid is already binding"],
+  ["pendingReturns / withdraw", "- nothing -", "no escrow, no reentrancy"],
   ["event / emit", "stakeholders see the tx", "no separate event log"],
 ];
 
@@ -20,7 +20,7 @@ const VANISHED = [
   },
   {
     title: "The reentrancy surface",
-    body: "No value escrowed mid-contract, no external calls during execution — the pull-payment dance simply isn't needed.",
+    body: "No value escrowed mid-contract, no external calls during execution - the pull-payment dance simply isn't needed.",
   },
 ];
 
@@ -29,7 +29,7 @@ export function ConceptMap() {
     <section className="mx-auto w-full max-w-6xl px-5 py-24">
       <p className="eyebrow mb-4">The translation</p>
       <h2 className="max-w-2xl font-display text-3xl leading-tight sm:text-4xl">
-        Everything you&apos;d reach for in Solidity —{" "}
+        Everything you&apos;d reach for in Solidity -{" "}
         <span className="text-muted-foreground">and what it becomes.</span>
       </h2>
 

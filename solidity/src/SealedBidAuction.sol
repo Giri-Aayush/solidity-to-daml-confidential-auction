@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @title SealedBidAuction — a first-price sealed-bid auction on the EVM.
-/// @author From Solidity to Daml — a Confidential Auction on Canton
+/// @title SealedBidAuction - a first-price sealed-bid auction on the EVM.
+/// @author From Solidity to Daml - a Confidential Auction on Canton
 /// @notice On a public blockchain, every bid amount and every byte of calldata
 ///         is visible to the entire world the instant it is mined. You cannot
 ///         *hide* a value on-chain. The best you can do is COMMIT to a hash of
-///         your bid now, then REVEAL the pre-image later — the commit/reveal
+///         your bid now, then REVEAL the pre-image later - the commit/reveal
 ///         pattern. Three consequences fall out of this, and they are the whole
 ///         reason this contract is shaped the way it is:
 ///
 ///         1. Confidentiality is only *temporary*. Bids are secret during the
 ///            commit phase and fully public the moment they are revealed.
 ///         2. Privacy is enforced by *economics*, not by the ledger. A bidder
-///            who never reveals forfeits their locked deposit — that threat is
+///            who never reveals forfeits their locked deposit - that threat is
 ///            the only thing stopping people from committing and walking away.
 ///         3. You need an explicit reveal phase, deposits, hashing, and a
 ///            timeline. None of this is the auction's business logic; it is all
@@ -21,7 +21,7 @@ pragma solidity ^0.8.24;
 ///
 ///         Contrast this with Canton/Daml (see ../daml). There, a `Bid` contract
 ///         is shared *only* with its signatories and observers. Competing bidders
-///         never see it at all — not even a hash. Privacy is a property of the
+///         never see it at all - not even a hash. Privacy is a property of the
 ///         ledger, so the commit/reveal machinery below simply disappears.
 contract SealedBidAuction {
     /// @dev The party who receives the winning bid's funds when the auction ends.
@@ -82,11 +82,11 @@ contract SealedBidAuction {
     /// @notice COMMIT phase. Submit keccak256(abi.encodePacked(value, secret)).
     /// @dev Send a deposit >= the value you intend to bid. If you later reveal a
     ///      value larger than your deposit, the bid is treated as invalid. If you
-    ///      never reveal, your deposit stays locked forever — this forfeiture is
+    ///      never reveal, your deposit stays locked forever - this forfeiture is
     ///      the economic glue that makes the scheme binding.
     function commit(bytes32 blindedBid) external payable onlyBefore(biddingEnd) {
         // bytes32(0) is the "no bid yet" sentinel for this mapping, so a zero
-        // commitment must be rejected — otherwise it would slip past the
+        // commitment must be rejected - otherwise it would slip past the
         // AlreadyCommitted guard (enabling a second commit that overwrites and
         // strands the first deposit) and could never be revealed.
         if (blindedBid == bytes32(0)) revert EmptyCommitment();
@@ -129,7 +129,7 @@ contract SealedBidAuction {
     }
 
     /// @notice Withdraw any funds owed to you (outbid amounts, surplus deposit,
-    ///         or — for the beneficiary — the winning bid after the auction ends).
+    ///         or - for the beneficiary - the winning bid after the auction ends).
     function withdraw() external {
         uint256 amount = pendingReturns[msg.sender];
         if (amount > 0) {
@@ -143,7 +143,7 @@ contract SealedBidAuction {
     }
 
     /// @notice Close the auction. The winning bid is credited to the beneficiary's
-    ///         pull-payment balance (collected via withdraw), never pushed — a
+    ///         pull-payment balance (collected via withdraw), never pushed - a
     ///         beneficiary that reverts on receive can no longer brick auctionEnd
     ///         or trap the winning funds.
     function auctionEnd() external onlyAfter(revealEnd) {
@@ -165,7 +165,7 @@ contract SealedBidAuction {
     ///      reveal() and hashBid() so they can never drift apart.
     ///      NOTE: abi.encodePacked is safe here only because both arguments are
     ///      fixed-width (uint256, bytes32). With two or more *dynamic* arguments
-    ///      (string/bytes) encodePacked can produce hash collisions — use
+    ///      (string/bytes) encodePacked can produce hash collisions - use
     ///      abi.encode in that case.
     function _commitmentOf(uint256 value, bytes32 secret) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(value, secret));

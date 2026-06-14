@@ -158,7 +158,7 @@ contract SealedBidAuctionTest is Test {
         auction.reveal(1 ether, sA);
     }
 
-    /// A bidder who commits but never reveals forfeits their locked deposit —
+    /// A bidder who commits but never reveals forfeits their locked deposit -
     /// the economic mechanism that keeps the sealed phase honest.
     function test_NonRevealerForfeitsDeposit() public {
         bytes32 sA = keccak256("alice-secret");
@@ -189,7 +189,7 @@ contract SealedBidAuctionTest is Test {
         auction.reveal(3 ether, sA);
     }
 
-    /// A zero commitment is rejected outright — it would otherwise collide with
+    /// A zero commitment is rejected outright - it would otherwise collide with
     /// the "no bid yet" sentinel and let a bidder strand their own deposit.
     function test_RejectsEmptyCommitment() public {
         vm.prank(alice);
@@ -272,7 +272,7 @@ contract SealedBidAuctionTest is Test {
     }
 }
 
-/// Beneficiary that rejects all incoming ETH — used to prove auctionEnd can't be
+/// Beneficiary that rejects all incoming ETH - used to prove auctionEnd can't be
 /// bricked by a hostile/contract beneficiary now that payment is pull-based.
 contract RevertingReceiver {
     receive() external payable {

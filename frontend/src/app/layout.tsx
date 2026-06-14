@@ -27,9 +27,9 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "The bid no one else can see — Solidity → Daml on Canton",
+  title: "The bid no one else can see - Solidity → Daml on Canton",
   description:
-    "The same sealed-bid auction, built twice — EVM commit/reveal vs. Canton's native privacy. Place a bid and watch what each party is, and isn't, allowed to see.",
+    "The same sealed-bid auction, built twice - EVM commit/reveal vs. Canton's native privacy. Place a bid and watch what each party is, and isn't, allowed to see.",
 };
 
 export default function RootLayout({

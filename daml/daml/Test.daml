@@ -28,12 +28,12 @@ privacyAndSettlement = script do
       biddingOpen = True
 
   -- Three independent, sealed submissions. No commit hash, no deposit, no
-  -- reveal phase — each bidder simply states their amount.
+  -- reveal phase - each bidder simply states their amount.
   aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 30.0
   bobBid <- submit bob do exerciseCmd auctionCid PlaceBid with bidder = bob, amount = 50.0
   carolBid <- submit carol do exerciseCmd auctionCid PlaceBid with bidder = carol, amount = 40.0
 
-  -- THE POINT: each bidder sees exactly their OWN bid — asserted by content, not
+  -- THE POINT: each bidder sees exactly their OWN bid - asserted by content, not
   -- merely a count. A leak that surfaced Bob's bid to Alice (same count) would
   -- be caught because we check the bidder and amount are hers.
   aliceView <- query @Bid alice

@@ -5,7 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ------------------------------------------------------------------ *
- *  Confidential Auction — "cryptographic ledger / institutional terminal"
+ *  Confidential Auction - "cryptographic ledger / institutional terminal"
  *  Warm near-black canvas · bone ink · vault-amber (sealed/private) ·
  *  signal-red (public/exposed). Display: Fraunces. Data: IBM Plex Mono.
  * ------------------------------------------------------------------ */
@@ -19,7 +19,7 @@
   --font-display: var(--font-display);
   --font-heading: var(--font-display);
 
-  /* bespoke palette tokens → enable text-vault, bg-signal, border-line, etc. */
+  /* bespoke palette tokens so text-vault, bg-signal, border-line etc. work */
   --color-bg: var(--bg);
   --color-bg-raised: var(--bg-raised);
   --color-bg-sunken: var(--bg-sunken);

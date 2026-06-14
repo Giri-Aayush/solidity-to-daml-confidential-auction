@@ -5,8 +5,8 @@ const GUIDE = `${REPO}/blob/main/guide/solidity-to-daml.md`;
 
 const STATS = [
   ["1 auction", "two implementations"],
-  ["~150 ↦ ~90", "solidity loc ↦ daml loc"],
-  ["8 + 3", "foundry + daml tests, green"],
+  ["~90 ↦ ~70", "solidity loc ↦ daml loc"],
+  ["12 + 5", "foundry + daml tests, green"],
   ["0", "lines of privacy plumbing in daml"],
 ];
 
@@ -67,7 +67,7 @@ export function Hero() {
         >
           The same sealed-bid auction, built twice. On the EVM you fake privacy with
           commit, reveal, deposits, and forfeiture. On Canton, a bid is simply shared
-          with no one else — so all of that machinery{" "}
+          with no one else - so all of that machinery{" "}
           <span className="text-bone">disappears</span>.
         </p>
 

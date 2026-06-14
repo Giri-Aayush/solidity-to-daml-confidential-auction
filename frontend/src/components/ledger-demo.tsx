@@ -45,7 +45,7 @@ export function LedgerDemo() {
   const someRevealed = revealed.length > 0;
   const evmUnrevealed = mode === "evm" && bids.length > 0 && !allRevealed;
   // Canton: the auctioneer can settle once there are bids. EVM: only revealed
-  // bids count — unrevealed ones are forfeited, mirroring commit/reveal.
+  // bids count - unrevealed ones are forfeited, mirroring commit/reveal.
   const canSettle = !result && (mode === "canton" ? bids.length > 0 : someRevealed);
 
   function placeBid(p: Party) {
@@ -107,13 +107,13 @@ export function LedgerDemo() {
               {mode === "canton" ? (
                 <>
                   Each <span className="text-vault">Bid</span> is shared only with the
-                  auctioneer and its bidder. Watch a bid appear in full for them — and
+                  auctioneer and its bidder. Watch a bid appear in full for them - and
                   as a <span className="text-vault">redacted bar</span> for everyone else.
                 </>
               ) : (
                 <>
                   On a public chain every bid is visible to all. Commit, then{" "}
-                  <span className="text-signal">reveal</span> each bid — after reveal the
+                  <span className="text-signal">reveal</span> each bid - after reveal the
                   amount is public forever, and any bid left unrevealed is forfeited.
                 </>
               )}
@@ -216,7 +216,7 @@ export function LedgerDemo() {
 
       <p className="mt-4 text-center text-xs leading-relaxed text-ink-faint">
         Redaction bars are a teaching aid. On a live Canton deployment, a sealed bid
-        never reaches a non-stakeholder&apos;s participant node at all — they
+        never reaches a non-stakeholder&apos;s participant node at all - they
         wouldn&apos;t see even a placeholder.
       </p>
     </div>
@@ -305,7 +305,7 @@ function PartyPanel({
       <ul className="flex flex-col gap-2">
         {bids.length === 0 && (
           <li className="py-6 text-center font-mono text-xs text-ink-faint">
-            — no bids yet —
+            - no bids yet -
           </li>
         )}
         {views.map(({ bid, v }) => (
@@ -335,7 +335,7 @@ function BidRow({ bid, v, viewer }: { bid: Bid; v: Visibility; viewer: Party }) 
           </TooltipTrigger>
           <TooltipContent className="max-w-[220px] text-xs">
             Not shared with {viewer}. On Canton this contract never reaches their
-            node — shown redacted here only for contrast.
+            node - shown redacted here only for contrast.
           </TooltipContent>
         </Tooltip>
         <span className="font-mono text-[0.7rem] text-ink-faint">not yours</span>
@@ -359,11 +359,11 @@ function BidRow({ bid, v, viewer }: { bid: Bid; v: Visibility; viewer: Party }) 
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="cursor-help font-mono text-[0.7rem] text-signal">
-              {v.hash.slice(0, 12)}…
+              {v.hash.slice(0, 12)}...
             </span>
           </TooltipTrigger>
           <TooltipContent className="max-w-[240px] text-xs">
-            An illustrative commitment (stand-in for keccak256). Public but opaque —
+            An illustrative commitment (stand-in for keccak256). Public but opaque -
             until this bidder reveals, then the amount is public to everyone, forever.
           </TooltipContent>
         </Tooltip>
