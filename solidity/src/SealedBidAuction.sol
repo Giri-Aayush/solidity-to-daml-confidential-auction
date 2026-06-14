@@ -55,6 +55,7 @@ contract SealedBidAuction {
     error TooLate(uint256 closedAt);
     error AuctionAlreadyEnded();
     error AlreadyCommitted();
+    error EmptyCommitment();
     error NothingCommitted();
     error AlreadyRevealed();
     error TransferFailed();
@@ -84,6 +85,11 @@ contract SealedBidAuction {
     ///      never reveal, your deposit stays locked forever — this forfeiture is
     ///      the economic glue that makes the scheme binding.
     function commit(bytes32 blindedBid) external payable onlyBefore(biddingEnd) {
+        // bytes32(0) is the "no bid yet" sentinel for this mapping, so a zero
+        // commitment must be rejected — otherwise it would slip past the
+        // AlreadyCommitted guard (enabling a second commit that overwrites and
+        // strands the first deposit) and could never be revealed.
+        if (blindedBid == bytes32(0)) revert EmptyCommitment();
         if (bids[msg.sender].blindedBid != bytes32(0)) revert AlreadyCommitted();
         bids[msg.sender] = Bid({blindedBid: blindedBid, deposit: msg.value, revealed: false});
         emit BidCommitted(msg.sender, blindedBid, msg.value);
@@ -99,7 +105,11 @@ contract SealedBidAuction {
         bid.revealed = true;
 
         uint256 refund = bid.deposit;
-        bool valid = bid.blindedBid == keccak256(abi.encodePacked(value, secret)) && bid.deposit >= value;
+        // A bid counts only if the pre-image matches, the deposit covers it, and
+        // the value is positive (a zero bid is meaningless and mirrors the Daml
+        // model's `amount > 0` rule; otherwise a 0 bid could never win the strict
+        // `value > highestBid` check anyway).
+        bool valid = bid.blindedBid == _commitmentOf(value, secret) && bid.deposit >= value && value > 0;
 
         bool isHighest = false;
         if (valid && value > highestBid) {
@@ -118,33 +128,46 @@ contract SealedBidAuction {
         emit BidRevealed(msg.sender, value, isHighest);
     }
 
-    /// @notice Withdraw any refunds owed to you (outbid amounts, surplus deposit).
+    /// @notice Withdraw any funds owed to you (outbid amounts, surplus deposit,
+    ///         or — for the beneficiary — the winning bid after the auction ends).
     function withdraw() external {
         uint256 amount = pendingReturns[msg.sender];
         if (amount > 0) {
+            // Checks-effects-interactions: zero out first, then send. A failed
+            // call reverts the whole tx, which rolls the zeroing back, so no
+            // manual restore is needed.
             pendingReturns[msg.sender] = 0;
             (bool ok,) = msg.sender.call{value: amount}("");
-            if (!ok) {
-                pendingReturns[msg.sender] = amount; // restore on failure
-                revert TransferFailed();
-            }
+            if (!ok) revert TransferFailed();
         }
     }
 
-    /// @notice Close the auction and pay the beneficiary the winning bid.
+    /// @notice Close the auction. The winning bid is credited to the beneficiary's
+    ///         pull-payment balance (collected via withdraw), never pushed — a
+    ///         beneficiary that reverts on receive can no longer brick auctionEnd
+    ///         or trap the winning funds.
     function auctionEnd() external onlyAfter(revealEnd) {
         if (ended) revert AuctionAlreadyEnded();
         ended = true;
         emit AuctionEnded(highestBidder, highestBid);
         if (highestBidder != address(0)) {
-            (bool ok,) = beneficiary.call{value: highestBid}("");
-            if (!ok) revert TransferFailed();
+            pendingReturns[beneficiary] += highestBid;
         }
     }
 
     /// @notice Helper so off-chain code and tests build commitments the same way
     ///         the contract verifies them. (Pure; safe to call off-chain.)
     function hashBid(uint256 value, bytes32 secret) external pure returns (bytes32) {
+        return _commitmentOf(value, secret);
+    }
+
+    /// @dev Single source of truth for the commitment scheme, used by both
+    ///      reveal() and hashBid() so they can never drift apart.
+    ///      NOTE: abi.encodePacked is safe here only because both arguments are
+    ///      fixed-width (uint256, bytes32). With two or more *dynamic* arguments
+    ///      (string/bytes) encodePacked can produce hash collisions — use
+    ///      abi.encode in that case.
+    function _commitmentOf(uint256 value, bytes32 secret) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(value, secret));
     }
 }
