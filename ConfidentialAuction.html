@@ -193,21 +193,30 @@ a:hover{text-decoration:underline}
 .win [data-lucide]{width:13px;height:13px}
 .honesty{margin-top:16px;text-align:center;color:var(--fg-tertiary);font-size:12px;line-height:1.5;max-width:74ch;margin-left:auto;margin-right:auto}
 
-/* ---- code contrast ---- */
+/* ---- code contrast (editor-style) ---- */
 .codecols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:34px}
-.codecard{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden;display:flex;flex-direction:column}
-.codecard.canton{border-color:var(--accent-soft);box-shadow:inset 0 0 0 1px rgba(167,139,250,0.06)}
-.codecard .ch{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border)}
-.codecard .clang{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:11px;letter-spacing:0.03em}
-.codecard.evm .clang{color:var(--danger)}
+.codecard{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);overflow:hidden;
+  display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(0,0,0,0.38)}
+.codecard.canton{border-color:var(--accent-soft)}
+.codecard .ch{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;
+  background:var(--bg-elevated);border-bottom:1px solid var(--border)}
+.codecard .clang{display:inline-flex;align-items:center;gap:11px;font-family:var(--font-mono);font-size:11.5px;letter-spacing:0.02em}
+.codecard.evm .clang{color:#ff8079}
 .codecard.canton .clang{color:var(--accent)}
-.codecard .clang [data-lucide]{width:14px;height:14px}
+.dots{display:inline-flex;gap:6px}
+.dots i{width:11px;height:11px;border-radius:50%;display:inline-block}
 .codecard .cnote{font-family:var(--font-mono);font-size:10.5px;color:var(--fg-tertiary)}
-.codecard pre{margin:0;padding:16px;overflow:auto;background:var(--surface-sunken);flex:1}
-.codecard code{font-family:var(--font-mono);font-size:12px;line-height:1.7;color:var(--fg-secondary);white-space:pre;display:block}
-.codecard code .c{color:var(--fg-tertiary)}
-.codecard code .k{color:var(--accent)}
-.codecard.evm code .k{color:#c16cf0}
+.codebody{display:grid;grid-template-columns:auto 1fr;background:var(--surface-sunken);flex:1;min-height:0}
+.gutter{margin:0;padding:16px 14px 16px 16px;color:var(--fg-tertiary);opacity:.42;font-family:var(--font-mono);
+  font-size:12px;line-height:1.75;text-align:right;user-select:none;white-space:pre;border-right:1px solid var(--border)}
+.codebody .code{margin:0;padding:16px;overflow-x:auto;min-width:0}
+.codebody code{font-family:var(--font-mono);font-size:12px;line-height:1.75;white-space:pre;display:block;color:#cdcad9}
+.t-c{color:#6c6878;font-style:italic}
+.t-k{color:#c792ea}
+.t-t{color:#62cfc4}
+.t-f{color:#e6c181}
+.t-n{color:#e0955e}
+.t-p{color:var(--fg-tertiary)}
 @media (max-width:760px){.codecols{grid-template-columns:1fr}}
 
 /* ---- concept map ---- */
@@ -350,37 +359,68 @@ footer{border-top:1px solid var(--border);padding:48px 0 56px;margin-top:24px}
   </div>
   <div class="codecols">
     <div class="codecard evm">
-      <div class="ch"><span class="clang"><i data-lucide="file-code"></i> SealedBidAuction.sol</span><span class="cnote">~40 lines of machinery</span></div>
-<pre><code><span class="c">// hide the bid behind a hash + a deposit</span>
-<span class="k">function</span> commit(bytes32 blindedBid) <span class="k">external</span> payable {
-    <span class="k">if</span> (blindedBid == bytes32(0)) <span class="k">revert</span> EmptyCommitment();
-    bids[msg.sender] = Bid(blindedBid, msg.value, false);
+      <div class="ch"><span class="clang"><span class="dots"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i></span> SealedBidAuction.sol</span><span class="cnote">~40 lines of machinery</span></div>
+      <div class="codebody">
+<pre class="gutter" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16</pre>
+<pre class="code"><code><span class="t-c">// hide the bid behind a hash + a deposit</span>
+<span class="t-k">function</span> <span class="t-f">commit</span>(<span class="t-t">bytes32</span> blindedBid) <span class="t-k">external</span> <span class="t-k">payable</span> {
+    <span class="t-k">if</span> (blindedBid == <span class="t-t">bytes32</span>(<span class="t-n">0</span>)) <span class="t-k">revert</span> <span class="t-f">EmptyCommitment</span>();
+    bids[msg.sender] = <span class="t-t">Bid</span>(blindedBid, msg.value, <span class="t-k">false</span>);
 }
 
-<span class="c">// reveal it later — now everyone can see it, forever</span>
-<span class="k">function</span> reveal(uint256 value, bytes32 secret) <span class="k">external</span> {
-    Bid <span class="k">storage</span> bid = bids[msg.sender];
-    bool valid = bid.blindedBid == _commitmentOf(value, secret)
-        &amp;&amp; bid.deposit &gt;= value &amp;&amp; value &gt; 0;
-    <span class="k">if</span> (valid &amp;&amp; value &gt; highestBid) {
+<span class="t-c">// reveal it later — now everyone can see it, forever</span>
+<span class="t-k">function</span> <span class="t-f">reveal</span>(<span class="t-t">uint256</span> value, <span class="t-t">bytes32</span> secret) <span class="t-k">external</span> {
+    <span class="t-t">Bid</span> <span class="t-k">storage</span> bid = bids[msg.sender];
+    <span class="t-t">bool</span> valid = bid.blindedBid == <span class="t-f">_commitmentOf</span>(value, secret)
+        <span class="t-p">&amp;&amp;</span> bid.deposit <span class="t-p">&gt;=</span> value <span class="t-p">&amp;&amp;</span> value <span class="t-p">&gt;</span> <span class="t-n">0</span>;
+    <span class="t-k">if</span> (valid <span class="t-p">&amp;&amp;</span> value <span class="t-p">&gt;</span> highestBid) {
         highestBid = value; highestBidder = msg.sender;
     }
 }
-<span class="c">// + pendingReturns, withdraw, forfeiture, a timeline…</span></code></pre>
+<span class="t-c">// + pendingReturns, withdraw, forfeiture, a timeline…</span></code></pre>
+      </div>
     </div>
     <div class="codecard canton">
-      <div class="ch"><span class="clang"><i data-lucide="file-code"></i> ConfidentialAuction.daml</span><span class="cnote">6 lines, private by construction</span></div>
-<pre><code><span class="c">-- a bid is shared only with the auctioneer and</span>
-<span class="c">-- its bidder. no commit, no reveal, no deposit:</span>
-<span class="c">-- it is private the instant it exists.</span>
-<span class="k">template</span> Bid
-  <span class="k">with</span>
-    auctioneer : Party
-    bidder : Party
-    amount : Decimal
-  <span class="k">where</span>
-    <span class="k">signatory</span> auctioneer, bidder
-    <span class="c">-- and nobody else can read it</span></code></pre>
+      <div class="ch"><span class="clang"><span class="dots"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i></span> ConfidentialAuction.daml</span><span class="cnote">6 lines, private by construction</span></div>
+      <div class="codebody">
+<pre class="gutter" aria-hidden="true">1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11</pre>
+<pre class="code"><code><span class="t-c">-- a bid is shared only with the auctioneer and</span>
+<span class="t-c">-- its bidder. no commit, no reveal, no deposit:</span>
+<span class="t-c">-- it is private the instant it exists.</span>
+<span class="t-k">template</span> <span class="t-t">Bid</span>
+  <span class="t-k">with</span>
+    auctioneer <span class="t-p">:</span> <span class="t-t">Party</span>
+    bidder <span class="t-p">:</span> <span class="t-t">Party</span>
+    amount <span class="t-p">:</span> <span class="t-t">Decimal</span>
+  <span class="t-k">where</span>
+    <span class="t-k">signatory</span> auctioneer, bidder
+    <span class="t-c">-- and nobody else can read it</span></code></pre>
+      </div>
     </div>
   </div>
 </div></section>
