@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  solidity:
+    name: solidity (foundry)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Run Foundry tests
+        working-directory: solidity
+        run: forge test -vv
+
+  daml:
+    name: daml (dpm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install DPM and the Daml SDK
+        run: |
+          curl -sSL https://get.digitalasset.com/install/install.sh | sh
+          DPM_BIN="$(find "$HOME" -maxdepth 4 -name dpm -type f 2>/dev/null | head -1)"
+          echo "dpm found at: $DPM_BIN"
+          echo "$(dirname "$DPM_BIN")" >> "$GITHUB_PATH"
+
+      - name: Install Daml 3.4.11
+        run: dpm install 3.4.11
+
+      - name: Run Daml Script tests
+        working-directory: daml
+        run: dpm test
