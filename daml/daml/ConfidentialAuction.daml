@@ -1,26 +1,30 @@
--- | From Solidity to Daml - a Confidential Auction on Canton.
+-- | From Solidity to Daml: a Confidential Auction on Canton.
 --
 -- The Solidity version of this auction (../../solidity) needs a commit phase, a
--- reveal phase, hashing, deposits, and a forfeiture mechanism. Every line of
--- that is scaffolding to work around one fact: on a public EVM, all state is
--- visible to everyone.
+-- reveal phase, hashing, deposits, and a forfeiture mechanism. All of that is
+-- scaffolding to work around one fact: on a public EVM, all state is visible to
+-- everyone.
 --
 -- On Canton, a contract is shared only with its @signatory@s and @observer@s.
 -- So a `Bid` signed by the auctioneer and one bidder is invisible to every
--- other bidder - not encrypted, not hashed, simply not part of their ledger.
+-- other bidder: not encrypted, not hashed, simply not part of their ledger.
 -- Confidentiality is a property of the ledger, so the commit/reveal machinery
 -- disappears. What remains below is just the auction.
+--
+-- Targets Daml 3.x (LF 2.x). Note that Daml 3 removed contract keys (the
+-- uniqueness guarantee is incompatible with Canton's multi-synchronizer
+-- design), so this model follows the current guidance: pass `ContractId`s as
+-- choice arguments and enforce any cross-contract invariants in application
+-- logic rather than relying on key lookups.
 module ConfidentialAuction where
 
 import DA.List (sortOn)
 
 -- | The coordination contract. The auctioneer owns it; invited bidders are
--- observers, so they can see the auction exists and place bids - but they will
--- never see each other's `Bid` contracts.
---
--- The @(auctioneer, auctionId)@ key gives the auction a stable identity that
--- survives `CloseBidding` (which archives and re-creates it) and lets every
--- `Bid` bind to a specific auction rather than a free-text item name.
+-- observers, so they can see the auction exists and place bids, but they will
+-- never see each other's `Bid` contracts. `auctionId` is a plain field the
+-- auctioneer assigns; bids carry it so settlement can confirm a bid belongs to
+-- this auction.
 template Auction
   with
     auctioneer : Party
@@ -32,18 +36,13 @@ template Auction
     signatory auctioneer
     observer invited
 
-    key (auctioneer, auctionId) : (Party, Text)
-    maintainer key._1
-
     -- | A bidder places a sealed bid. The `Bid` this creates is signed by the
-    -- auctioneer and the bidder only, so it is confidential by construction -
+    -- auctioneer and the bidder only, so it is confidential by construction:
     -- there is no reveal phase because there is nothing to reveal.
     --
     -- Authorization works because the choice body runs with the authority of
     -- the Auction's signatory (the auctioneer) plus the controller (the
-    -- bidder), which is exactly the pair of signatories the `Bid` requires. The
-    -- `Bid` key means a bidder gets exactly one live bid per auction: a second
-    -- `PlaceBid` fails on the duplicate key.
+    -- bidder), which is exactly the pair of signatories the `Bid` requires.
     nonconsuming choice PlaceBid : ContractId Bid
       with
         bidder : Party
@@ -55,23 +54,19 @@ template Auction
         assertMsg "bid must be positive" (amount > 0.0)
         create Bid with auctioneer, auctionId, bidder, item, amount
 
-    -- | The auctioneer closes bidding; the reissued Auction (same key) rejects
-    -- late bids and is the only state in which `Settle` will run.
+    -- | The auctioneer closes bidding; the reissued Auction rejects late bids
+    -- and is the only state in which `Settle` will run.
     choice CloseBidding : ContractId Auction
       controller auctioneer
       do create this with biddingOpen = False
 
-    -- | Settle the auction. The auctioneer collects the bid contract ids
+    -- | Settle the auction. The auctioneer gathers the bid contract ids
     -- off-ledger (it is the only party that can see them all) and passes them
-    -- in. Winner selection happens here, on-ledger, over data the auctioneer is
-    -- authorized to read. Losing bids are cleared and the result is recorded,
-    -- visible only to the auctioneer and the winner.
-    --
-    -- NOTE (trust boundary): the choice can only reason over the cids it is
-    -- handed; it cannot prove the auctioneer included *every* bid. The key/auth
-    -- model guarantees each cid is a genuine bid for *this* auction, but
-    -- completeness is the auctioneer's responsibility - an honest deployment
-    -- would derive the list from the Ledger API, not trust a caller.
+    -- in: this "pass ContractIds as choice arguments" pattern is the standard
+    -- Daml 3 approach now that key lookups are gone. Winner selection happens
+    -- here, on-ledger, over data the auctioneer is authorized to read. Losing
+    -- bids are cleared and the result is recorded, visible only to the
+    -- auctioneer and the winner.
     choice Settle : ContractId AuctionResult
       with
         bidCids : [ContractId Bid]
@@ -79,9 +74,8 @@ template Auction
       do
         assertMsg "close bidding before settling" (not biddingOpen)
 
-        -- Tolerate a duplicated contract id in the input: clearing the same bid
-        -- twice would otherwise abort the whole settlement. Order-preserving so
-        -- the tie-break below is predictable.
+        -- De-duplicate the caller's list so a repeated id can't double-clear a
+        -- bid. Order-preserving so the tie-break below is predictable.
         let uniqueCids =
               foldl (\seen c -> if c `elem` seen then seen else seen <> [c]) [] bidCids
 
@@ -93,7 +87,7 @@ template Auction
 
         -- Highest bid wins. `sortOn` is stable, so on a tie the earliest bid in
         -- the (deduplicated, input-ordered) list keeps the lead. There is no
-        -- on-ledger time source here to break ties more fairly - a production
+        -- on-ledger time source here to break ties more fairly; a production
         -- model would record a submission order or timestamp.
         case sortOn (\(_, bid) -> negate bid.amount) bids of
           [] -> abort "cannot settle an auction with no bids"
@@ -108,9 +102,14 @@ template Auction
               winningAmount = winningBid.amount
 
 -- | A single sealed bid. Its stakeholders are exactly the auctioneer and the
--- bidder: no other party - not even another invited bidder - can fetch it,
--- query it, or learn that it exists. The @(auctioneer, auctionId, bidder)@ key
--- enforces one live bid per bidder per auction.
+-- bidder: no other party, not even another invited bidder, can fetch it, query
+-- it, or learn that it exists.
+--
+-- One bid per bidder is NOT enforced on-ledger here. Daml 3 has no unique
+-- contract keys, so an application that needs that invariant enforces it off-
+-- ledger (for example, the auctioneer's app rejects a second submission, or
+-- settlement keeps only each bidder's highest bid). This sample lets a bidder
+-- place more than one; settlement still picks the single highest bid overall.
 template Bid
   with
     auctioneer : Party
@@ -121,18 +120,15 @@ template Bid
   where
     signatory auctioneer, bidder
 
-    key (auctioneer, auctionId, bidder) : (Party, Text, Party)
-    maintainer key._1
-
     -- | Lets the auctioneer clear this bid during settlement. The bidder
     -- pre-authorized this by signing the bid, so the auctioneer can exercise it
-    -- alone - no second signature, no reveal step.
+    -- alone: no second signature, no reveal step.
     choice Clear : ()
       controller auctioneer
       do pure ()
 
 -- | The outcome, disclosed only to the auctioneer and the winning bidder.
--- Losing bidders never learn the winning amount - another privacy property the
+-- Losing bidders never learn the winning amount: another privacy property the
 -- Solidity version cannot offer, since on the EVM every revealed bid is public.
 template AuctionResult
   with

@@ -1,4 +1,4 @@
-sdk-version: 2.10.4
+sdk-version: 3.4.11
 name: confidential-auction
 source: daml
 version: 1.0.0
@@ -6,3 +6,9 @@ dependencies:
   - daml-prim
   - daml-stdlib
   - daml-script
+# This sample keeps templates and Daml Script tests in one package for
+# readability. A production app would put tests in their own package so
+# daml-script is never uploaded to the ledger; we silence that one advisory
+# warning here rather than split a three-template teaching example.
+build-options:
+  - -Wno-template-interface-depends-on-daml-script

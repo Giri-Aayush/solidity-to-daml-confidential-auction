@@ -13,8 +13,7 @@ removed - because on Canton, a bid contract is shared only with its stakeholders
   `PlaceBid` choice creates a confidential bid; `Settle` picks the winner.
 - **`Bid`** - signed by the auctioneer *and one bidder*, and nobody else. That two-
   party signatory set is the entire privacy mechanism: no other party's ledger
-  contains it. A contract key, `(auctioneer, auctionId, bidder)`, gives each bidder
-  exactly one live bid per auction.
+  contains it.
 - **`AuctionResult`** - observed only by the winner, so losing bidders never learn
   the clearing price.
 
@@ -38,17 +37,23 @@ approximate.
 ## Run the tests
 
 ```bash
-daml test
+dpm build
+dpm test
 ```
 
-Five scripts: `privacyAndSettlement` (privacy + winner selection),
-`nonInvitedCannotBid`, `closedBiddingRejectsLateBids`, `cannotSettleWhileOpen`,
-and `oneBidPerBidder`.
+Four scripts: `privacyAndSettlement` (privacy + winner selection),
+`nonInvitedCannotBid`, `closedBiddingRejectsLateBids`, and `cannotSettleWhileOpen`.
 
 ## Setup notes
 
-- Built and tested against **Daml SDK 2.10.4**. Install via
-  `curl -sSL https://get.daml.com/ | sh`; needs a **Java 11+** runtime on `PATH`.
+- Built and tested against **Daml 3.4.11** with **DPM** (the Daml package manager).
+  Install via `curl -sSL https://get.digitalasset.com/install/install.sh | sh`, then
+  `dpm install 3.4.11`; needs a **Java 17+** runtime on `PATH`.
+- Daml 3 removed contract keys (their uniqueness guarantee is incompatible with
+  Canton's multi-synchronizer design), so one-bid-per-bidder is not enforced
+  on-ledger here; an app enforces that off-ledger. Templates and tests share one
+  package for readability (production would split them so daml-script isn't
+  uploaded to the participant).
 - This runs on Daml's in-memory script ledger. The same templates deploy to a
   Canton participant node unchanged - Canton is where the per-party privacy this
   model relies on is actually enforced across organizations.

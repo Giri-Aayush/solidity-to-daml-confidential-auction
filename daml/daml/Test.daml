@@ -128,21 +128,3 @@ cannotSettleWhileOpen = script do
   aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 10.0
 
   auctioneer `submitMustFail` exerciseCmd auctionCid Settle with bidCids = [aliceBid]
-
--- | A bidder gets exactly one live bid per auction; a second PlaceBid fails on
--- the duplicate Bid key.
-oneBidPerBidder : Script ()
-oneBidPerBidder = script do
-  auctioneer <- allocateParty "Auctioneer"
-  alice <- allocateParty "Alice"
-
-  auctionCid <- submit auctioneer do
-    createCmd Auction with
-      auctioneer
-      auctionId = "PAINTING-2026"
-      item = "Rare painting"
-      invited = [alice]
-      biddingOpen = True
-
-  _ <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 10.0
-  alice `submitMustFail` exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 20.0
