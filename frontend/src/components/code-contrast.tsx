@@ -29,8 +29,8 @@ const DAML_CODE = `<span class="t-c">-- a single sealed bid. its stakeholders ar
   <span class="t-k">with</span>
     auctioneer <span class="t-p">:</span> <span class="t-t">Party</span>
     auctionId <span class="t-p">:</span> <span class="t-t">Text</span>
-    bidder <span class="t-p">:</span> <span class="t-t">Party</span>
     item <span class="t-p">:</span> <span class="t-t">Text</span>
+    bidder <span class="t-p">:</span> <span class="t-t">Party</span>
     amount <span class="t-p">:</span> <span class="t-t">Decimal</span>
   <span class="t-k">where</span>
     <span class="t-k">signatory</span> auctioneer, bidder

@@ -4,8 +4,8 @@ const ROWS: [string, string, string][] = [
   ["require(msg.sender == owner)", "controller / signatory", "authz is part of the type"],
   ["mutate storage", "archive + re-create", "contracts are immutable"],
   ["keccak256 commit + reveal", "- nothing -", "privacy is native"],
-  ["deposits & forfeiture", "- nothing -", "a bid is already binding"],
-  ["pendingReturns / withdraw", "- nothing -", "no escrow, no reentrancy"],
+  ["forfeiture (reveal-or-lose)", "- nothing -", "losers refunded atomically"],
+  ["pendingReturns / withdraw", "one atomic DvP", "no pull-payment, no reentrancy"],
   ["event / emit", "stakeholders see the tx", "no separate event log"],
 ];
 
@@ -15,12 +15,12 @@ const VANISHED = [
     body: "No hash to commit to, so no second window to reveal it. A bid is born private.",
   },
   {
-    title: "Deposits & forfeiture",
-    body: "These existed only to make a hidden commitment binding. A Daml bid is a real, authorized contract the instant it is created.",
+    title: "Forfeiture",
+    body: "Losing bidders aren't punished. Their locked funds are returned atomically at settlement, so there's no 'reveal or lose your deposit' threat.",
   },
   {
-    title: "The reentrancy surface",
-    body: "No value escrowed mid-contract, no external calls during execution - the pull-payment dance simply isn't needed.",
+    title: "The pull-payment dance",
+    body: "Settlement is one atomic transaction - the winner pays the seller and losers are refunded together - so there's no escrow-then-withdraw step and no reentrancy surface.",
   },
 ];
 

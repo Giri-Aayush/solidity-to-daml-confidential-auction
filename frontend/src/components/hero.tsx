@@ -6,8 +6,8 @@ const GUIDE = `${REPO}/blob/main/guide/solidity-to-daml.md`;
 
 const STATS = [
   ["1 auction", "two implementations"],
-  ["90 ↦ 70", "solidity ↦ daml code lines"],
-  ["12 + 4", "foundry + daml tests, green"],
+  ["1 tx", "atomic dvp settlement in daml"],
+  ["12 + 5", "foundry + daml tests, green"],
   ["0", "lines of privacy plumbing in daml"],
 ];
 
