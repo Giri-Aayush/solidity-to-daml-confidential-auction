@@ -1,0 +1,13 @@
+# the next.js app lives in frontend/, so build runs from there
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# next runtime: handles the .next output, server components, and the
+# interactive client demo. netlify auto-installs this on detecting next.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
