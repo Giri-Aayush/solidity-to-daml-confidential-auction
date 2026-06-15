@@ -21,7 +21,7 @@ no counterpart in the Daml version.
 | Path | What it is | Status |
 |---|---|---|
 | [`solidity/`](solidity/) | First-price sealed-bid auction via commit/reveal, with Foundry tests | ✅ 12/12 tests pass |
-| [`daml/`](daml/) | The same auction in Daml, private by construction, with Daml Script tests | ✅ 5/5 scripts pass |
+| [`daml/`](daml/) | The same auction in Daml, private by construction, with Daml Script tests | ✅ 4/4 scripts pass |
 | [`guide/solidity-to-daml.md`](guide/solidity-to-daml.md) | The translation guide: concept map, mental-model shift, side-by-side code | 📖 read this |
 
 **Start with the [guide](guide/solidity-to-daml.md).** Then read the two contracts
@@ -40,16 +40,16 @@ bid, the auctioneer sees all of them.
 
 ## Run it
 
-Prerequisites: [Foundry](https://book.getfoundry.sh/) and the
-[Daml SDK](https://docs.daml.com/getting-started/installation.html) (which needs a
-Java 11+ runtime).
+Prerequisites: [Foundry](https://book.getfoundry.sh/) and
+[DPM](https://docs.digitalasset.com/build/3.4/dpm/dpm.html), the Daml package
+manager (needs a Java 17+ runtime).
 
 ```bash
-# EVM reference - 12 Foundry tests
+# EVM reference - 12 Foundry tests (Solidity 0.8.35)
 cd solidity && forge test -vv
 
-# Canton/Daml version - 5 Daml Script tests, including the privacy proof
-cd daml && daml test
+# Canton/Daml version - 4 Daml Script tests, including the privacy proof (Daml 3.4)
+cd daml && dpm test
 ```
 
 ## Why this comparison matters for Canton

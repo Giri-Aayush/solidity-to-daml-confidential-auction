@@ -226,17 +226,22 @@ Honesty matters more than a clean story:
   public EVM anyone can call; on Canton, parties and their visibility are managed
   deliberately - which is a feature for institutional use cases, and a difference to
   design around for open ones.
+- **Daml version.** This targets **Daml 3.x**, the current Canton-native line,
+  which removed contract keys (their uniqueness guarantee is incompatible with
+  Canton's multi-synchronizer design). So invariants like "one bid per bidder" are
+  enforced in application logic, and choices take `ContractId`s as arguments rather
+  than doing key lookups - which is exactly the `Settle` pattern above.
 
 ---
 
 ## 9. Run both yourself
 
 ```bash
-# Solidity - 12 tests
+# Solidity - 12 tests (0.8.35)
 cd solidity && forge test -vv
 
-# Daml - 5 scripts, including the privacy proof
-cd daml && daml test
+# Daml - 4 scripts, including the privacy proof (Daml 3.4)
+cd daml && dpm test
 ```
 
 The Daml `privacyAndSettlement` script is the one to read: it places three bids
