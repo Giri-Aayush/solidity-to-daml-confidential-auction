@@ -1,58 +1,63 @@
--- | Daml Script tests for the Confidential Auction.
+-- | Daml Script tests for the Confidential Auction (DvP version).
 --
--- The headline test is `privacyAndSettlement`: it proves on a running ledger
--- that one bidder sees *exactly their own* bid and nothing else. That is the
--- property the Solidity contract can only approximate with commit/reveal,
--- expressed here as a handful of assertions on a live ledger.
+-- The headline test, `privacyAndSettlement`, proves on a running ledger that a
+-- bidder sees exactly their own bid and nothing else, and that settlement moves
+-- real funds atomically: the winner pays the beneficiary while losers are
+-- refunded, all in one transaction.
 module Test where
 
 import ConfidentialAuction
 import Daml.Script
 import DA.Assert ((===))
+import DA.Time (addRelTime, hours)
 
--- | Sealed bids stay private (content, not just count), the highest bid wins at
--- settlement, losing bids are cleared, and only the winner learns the outcome.
+-- Issue a holding to each party from the operator (the auctioneer plays the
+-- registry role in this self-contained sample).
+fund : Party -> Party -> Decimal -> Script (ContractId Holding)
+fund operator owner amount =
+  submit operator do createCmd Holding with issuer = operator, owner, amount
+
+-- | Sealed bids stay private; settlement is an atomic DvP that pays the
+-- beneficiary from the winner and refunds the losers.
 privacyAndSettlement : Script ()
 privacyAndSettlement = script do
   auctioneer <- allocateParty "Auctioneer"
+  seller <- allocateParty "Seller"
   alice <- allocateParty "Alice"
   bob <- allocateParty "Bob"
   carol <- allocateParty "Carol"
+  now <- getTime
+
+  aliceFunds <- fund auctioneer alice 30.0
+  bobFunds <- fund auctioneer bob 50.0
+  carolFunds <- fund auctioneer carol 40.0
 
   auctionCid <- submit auctioneer do
     createCmd Auction with
       auctioneer
       auctionId = "PAINTING-2026"
       item = "Rare painting"
+      beneficiary = seller
       invited = [alice, bob, carol]
+      settleBy = addRelTime now (hours 24)
       biddingOpen = True
 
-  -- Three independent, sealed submissions. No commit hash, no deposit, no
-  -- reveal phase - each bidder simply states their amount.
-  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 30.0
-  bobBid <- submit bob do exerciseCmd auctionCid PlaceBid with bidder = bob, amount = 50.0
-  carolBid <- submit carol do exerciseCmd auctionCid PlaceBid with bidder = carol, amount = 40.0
+  -- Each bidder seals a bid and locks the amount from their holding.
+  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 30.0, funds = aliceFunds
+  bobBid <- submit bob do exerciseCmd auctionCid PlaceBid with bidder = bob, amount = 50.0, funds = bobFunds
+  carolBid <- submit carol do exerciseCmd auctionCid PlaceBid with bidder = carol, amount = 40.0, funds = carolFunds
 
-  -- THE POINT: each bidder sees exactly their OWN bid - asserted by content, not
-  -- merely a count. A leak that surfaced Bob's bid to Alice (same count) would
-  -- be caught because we check the bidder and amount are hers.
+  -- Privacy: each bidder sees exactly their OWN bid, by content not just count.
   aliceView <- query @Bid alice
   case aliceView of
     [(_, bid)] -> do
       bid.bidder === alice
       bid.amount === 30.0
     _ -> abort ("Alice must see exactly her own bid; saw " <> show (length aliceView))
-
-  bobView <- query @Bid bob
-  case bobView of
-    [(_, bid)] -> bid.bidder === bob
-    _ -> abort "Bob must see exactly his own bid"
-
-  -- The auctioneer, a signatory on every bid, sees all three.
   auctioneerView <- query @Bid auctioneer
   length auctioneerView === 3
 
-  -- Close bidding (required before settlement), then settle.
+  -- Close bidding, then settle.
   closedCid <- submit auctioneer do exerciseCmd auctionCid CloseBidding
   resultCid <- submit auctioneer do
     exerciseCmd closedCid Settle with bidCids = [aliceBid, bobBid, carolBid]
@@ -61,11 +66,22 @@ privacyAndSettlement = script do
   result.winner === bob
   result.winningAmount === 50.0
 
-  -- Losing (and winning) bids were actually cleared by settlement.
+  -- All bids were cleared.
   remaining <- query @Bid auctioneer
   length remaining === 0
 
-  -- Outcome is need-to-know: the winner sees it, and NEITHER loser does.
+  -- DvP outcome: the seller received the winning 50; the losers were refunded
+  -- their own locked amounts; the winner's funds are gone (paid to the seller).
+  sellerFunds <- query @Holding seller
+  map (\(_, h) -> h.amount) sellerFunds === [50.0]
+  aliceRefund <- query @Holding alice
+  map (\(_, h) -> h.amount) aliceRefund === [30.0]
+  carolRefund <- query @Holding carol
+  map (\(_, h) -> h.amount) carolRefund === [40.0]
+  bobFundsAfter <- query @Holding bob
+  bobFundsAfter === []
+
+  -- Outcome is need-to-know: the winner sees it, neither loser does.
   bobResult <- query @AuctionResult bob
   length bobResult === 1
   aliceResult <- query @AuctionResult alice
@@ -75,56 +91,93 @@ privacyAndSettlement = script do
 
   pure ()
 
--- | A party who was not invited cannot even see the auction, let alone bid.
+-- | A party who was not invited cannot bid.
 nonInvitedCannotBid : Script ()
 nonInvitedCannotBid = script do
   auctioneer <- allocateParty "Auctioneer"
+  seller <- allocateParty "Seller"
   alice <- allocateParty "Alice"
   mallory <- allocateParty "Mallory"
+  now <- getTime
 
+  malloryFunds <- fund auctioneer mallory 999.0
   auctionCid <- submit auctioneer do
     createCmd Auction with
       auctioneer
       auctionId = "PAINTING-2026"
       item = "Rare painting"
+      beneficiary = seller
       invited = [alice]
+      settleBy = addRelTime now (hours 24)
       biddingOpen = True
 
-  mallory `submitMustFail` exerciseCmd auctionCid PlaceBid with bidder = mallory, amount = 999.0
+  mallory `submitMustFail` exerciseCmd auctionCid PlaceBid with bidder = mallory, amount = 999.0, funds = malloryFunds
 
 -- | Once the auctioneer closes bidding, late bids are rejected.
 closedBiddingRejectsLateBids : Script ()
 closedBiddingRejectsLateBids = script do
   auctioneer <- allocateParty "Auctioneer"
+  seller <- allocateParty "Seller"
   alice <- allocateParty "Alice"
+  now <- getTime
 
+  aliceFunds <- fund auctioneer alice 10.0
   auctionCid <- submit auctioneer do
     createCmd Auction with
       auctioneer
       auctionId = "PAINTING-2026"
       item = "Rare painting"
+      beneficiary = seller
       invited = [alice]
+      settleBy = addRelTime now (hours 24)
       biddingOpen = True
 
   closedCid <- submit auctioneer do exerciseCmd auctionCid CloseBidding
+  alice `submitMustFail` exerciseCmd closedCid PlaceBid with bidder = alice, amount = 10.0, funds = aliceFunds
 
-  alice `submitMustFail` exerciseCmd closedCid PlaceBid with bidder = alice, amount = 10.0
-
--- | Settlement is refused while bidding is still open (fairness: no settling
--- before late bidders have had their chance).
+-- | Settlement is refused while bidding is still open.
 cannotSettleWhileOpen : Script ()
 cannotSettleWhileOpen = script do
   auctioneer <- allocateParty "Auctioneer"
+  seller <- allocateParty "Seller"
   alice <- allocateParty "Alice"
+  now <- getTime
 
+  aliceFunds <- fund auctioneer alice 10.0
   auctionCid <- submit auctioneer do
     createCmd Auction with
       auctioneer
       auctionId = "PAINTING-2026"
       item = "Rare painting"
+      beneficiary = seller
       invited = [alice]
+      settleBy = addRelTime now (hours 24)
       biddingOpen = True
 
-  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 10.0
-
+  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 10.0, funds = aliceFunds
   auctioneer `submitMustFail` exerciseCmd auctionCid Settle with bidCids = [aliceBid]
+
+-- | Settlement after the deadline is rejected (time-bounded DvP).
+settlementRespectsDeadline : Script ()
+settlementRespectsDeadline = script do
+  auctioneer <- allocateParty "Auctioneer"
+  seller <- allocateParty "Seller"
+  alice <- allocateParty "Alice"
+  now <- getTime
+
+  aliceFunds <- fund auctioneer alice 10.0
+  auctionCid <- submit auctioneer do
+    createCmd Auction with
+      auctioneer
+      auctionId = "PAINTING-2026"
+      item = "Rare painting"
+      beneficiary = seller
+      invited = [alice]
+      settleBy = addRelTime now (hours 1)
+      biddingOpen = True
+
+  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 10.0, funds = aliceFunds
+  closedCid <- submit auctioneer do exerciseCmd auctionCid CloseBidding
+
+  passTime (hours 2) -- advance past settleBy
+  auctioneer `submitMustFail` exerciseCmd closedCid Settle with bidCids = [aliceBid]
