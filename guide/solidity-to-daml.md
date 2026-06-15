@@ -22,7 +22,7 @@ Here is the same auction, both ways, measured by what the code spends its effort
 
 | | Solidity (`solidity/`) | Daml (`daml/`) |
 |---|---|---|
-| Lines of contract logic (excl. comments) | ~90 | ~70 |
+| Lines of contract logic (no comments) | 90 | 70 |
 | Keeps bids secret using | commit/reveal + `keccak256` hashes | the ledger's privacy model |
 | Secrecy lasts | until the reveal phase (then public forever) | permanently (losers never see winning bid) |
 | Needs a deposit + forfeiture | yes - the only thing making commitments binding | no |

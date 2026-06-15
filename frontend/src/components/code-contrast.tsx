@@ -1,7 +1,7 @@
 import { FileCode } from "lucide-react";
 
 const SOL_GUTTER = Array.from({ length: 18 }, (_, i) => i + 1).join("\n");
-const DAML_GUTTER = Array.from({ length: 13 }, (_, i) => i + 1).join("\n");
+const DAML_GUTTER = Array.from({ length: 14 }, (_, i) => i + 1).join("\n");
 
 const SOL_CODE = `<span class="t-c">// commit phase: hide the bid behind a hash + a deposit</span>
 <span class="t-k">function</span> <span class="t-f">commit</span>(<span class="t-t">bytes32</span> blindedBid) <span class="t-k">external</span> <span class="t-k">payable</span> onlyBefore(biddingEnd) {
@@ -34,6 +34,7 @@ const DAML_CODE = `<span class="t-c">-- a single sealed bid. its stakeholders ar
     amount <span class="t-p">:</span> <span class="t-t">Decimal</span>
   <span class="t-k">where</span>
     <span class="t-k">signatory</span> auctioneer, bidder
+    <span class="t-k">ensure</span> amount <span class="t-p">&gt;</span> <span class="t-n">0.0</span>
     <span class="t-c">-- the signatory set is the entire privacy model</span>`;
 
 function Dots() {
