@@ -1,5 +1,9 @@
 # From Solidity to Daml: A Confidential Auction on Canton
 
+[![live demo](https://img.shields.io/badge/live%20demo-canton--confidential.netlify.app-a78bfa?style=flat-square&logo=netlify&logoColor=white)](https://canton-confidential.netlify.app/) &nbsp;![daml](https://img.shields.io/badge/daml-3.4-7c3aed?style=flat-square) ![solidity](https://img.shields.io/badge/solidity-0.8.35-363636?style=flat-square) ![tests](https://img.shields.io/badge/tests-12%20%2B%205%20green-22c55e?style=flat-square)
+
+**[▶ Open the live demo](https://canton-confidential.netlify.app/)** to place a sealed bid and watch the privacy hold, no clone required.
+
 **The same sealed-bid auction, built twice** - once in Solidity for the EVM, once
 in Daml for Canton - to show Ethereum developers what changes when the ledger
 itself can keep a secret.
