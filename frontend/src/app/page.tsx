@@ -21,6 +21,8 @@ export default function Home() {
             all of them. Each bidder signs only their own. Flip to{" "}
             <span className="text-signal">EVM</span> and every redaction bar drops at
             once - the difference between a private ledger and a public one, in a click.
+            Then settle: the winner&apos;s funds pay the seller and losers are refunded
+            atomically, and even then you only ever see your own money move.
           </p>
         </div>
         <div className="px-5">

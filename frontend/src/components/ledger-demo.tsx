@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ArrowUpRight, Landmark, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -317,6 +318,7 @@ function PartyPanel({
         <>
           <hr className="rule my-3" />
           <ResultRow result={result} viewer={viewer} mode={mode} />
+          <SettlementRow result={result} viewer={viewer} bids={bids} />
         </>
       )}
     </section>
@@ -403,6 +405,44 @@ function ResultRow({
         {result.winner} · {result.amount} {UNIT}
         {youWon && <span className="text-bone"> ★</span>}
       </Badge>
+    </div>
+  );
+}
+
+// The viewer's OWN settlement, respecting privacy: the winner sees their payment,
+// each loser sees their own refund, and the auctioneer (issuer + beneficiary) sees
+// the incoming winning funds. No party sees another's money move.
+function SettlementRow({
+  result,
+  viewer,
+  bids,
+}: {
+  result: AuctionResult;
+  viewer: Party;
+  bids: Bid[];
+}) {
+  const myBid = bids.find((b) => b.bidder === viewer);
+  let text: string | null = null;
+  let Icon = RotateCcw;
+  let cls = "text-muted-foreground";
+  if (viewer === AUCTIONEER) {
+    text = `received ${result.amount} ${UNIT}`;
+    Icon = Landmark;
+    cls = "text-vault";
+  } else if (viewer === result.winner) {
+    text = `paid ${result.amount} ${UNIT}`;
+    Icon = ArrowUpRight;
+    cls = "text-vault";
+  } else if (myBid) {
+    text = `${myBid.amount} ${UNIT} refunded`;
+  }
+  if (!text) return null;
+  return (
+    <div className="seal-in mt-2 flex items-center justify-between gap-2">
+      <span className="kicker">funds</span>
+      <span className={`flex items-center gap-1.5 font-mono text-xs ${cls}`}>
+        <Icon className="size-3.5" /> {text}
+      </span>
     </div>
   );
 }
