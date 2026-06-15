@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>the bid no one else can see — solidity to daml on canton</title>
+<title>the bid no one else can see · solidity to daml on canton</title>
 <meta name="description" content="The same sealed-bid auction, built twice: on the EVM (public, faked privacy via commit/reveal) and on Canton/Daml (privacy is native). Place a bid and watch what each party can and cannot read." />
 <link rel="preconnect" href="https://api.fontshare.com" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -12,9 +12,9 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
 /* =====================================================================
-   Remit design tokens (lifted from the design system's colors_and_type.css)
-   adapted for the confidential auction. Canton = lavender/sealed,
-   EVM = red/exposed. Dark fintech, General Sans + JetBrains Mono.
+   Design tokens for the confidential auction.
+   Canton = lavender / sealed, EVM = red / exposed.
+   Dark theme, General Sans + JetBrains Mono.
    ===================================================================== */
 :root{
   --bg:#0A0A0F; --bg-elevated:#0D0D12; --surface:#14141A; --surface-hover:#1A1A22; --surface-sunken:#0D0D12;
@@ -383,7 +383,7 @@ footer{border-top:1px solid var(--border);padding:48px 0 56px;margin-top:24px}
     bids[msg.sender] = <span class="t-t">Bid</span>(blindedBid, msg.value, <span class="t-k">false</span>);
 }
 
-<span class="t-c">// reveal it later — now everyone can see it, forever</span>
+<span class="t-c">// reveal it later; now everyone can see it, forever</span>
 <span class="t-k">function</span> <span class="t-f">reveal</span>(<span class="t-t">uint256</span> value, <span class="t-t">bytes32</span> secret) <span class="t-k">external</span> {
     <span class="t-t">Bid</span> <span class="t-k">storage</span> bid = bids[msg.sender];
     <span class="t-t">bool</span> valid = bid.blindedBid == <span class="t-f">_commitmentOf</span>(value, secret)
@@ -466,13 +466,13 @@ footer{border-top:1px solid var(--border);padding:48px 0 56px;margin-top:24px}
     <a href="https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction" target="_blank" rel="noreferrer">repository <i data-lucide="arrow-up-right"></i></a>
   </nav>
 </div>
-<div class="wrap"><p class="legal">built with daml on canton · solidity / foundry · vanilla html + the remit design system. mit licensed.</p></div>
+<div class="wrap"><p class="legal">built with daml on canton · solidity / foundry. mit licensed.</p></div>
 </footer>
 
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
 /* ---------------------------------------------------------------------
-   Simulated ledger — mirrors the Daml templates: visibility is decided by
+   Simulated ledger that mirrors the Daml templates: visibility is decided by
    a contract's stakeholders (signatory + observer), not an ad-hoc flag.
    --------------------------------------------------------------------- */
 const AUCTIONEER = "Auctioneer";
