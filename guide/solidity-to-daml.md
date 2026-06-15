@@ -31,10 +31,10 @@ Here is the same auction, both ways, measured by what the code spends its effort
 
 The commit/reveal **privacy scaffolding** - hashing, the reveal phase, forfeiture -
 has no counterpart in Daml: the thing it simulates (a bid only some parties can see)
-is a primitive of the platform. The two contracts end up a similar length, though,
-and that itself is the lesson: Daml has no native currency, so it spends its lines
-modelling a token and an *atomic* delivery-versus-payment instead of faking privacy
-and chasing pull-payment refunds across multiple transactions.
+is a primitive of the platform. The two contracts still end up a similar length, and
+that is the lesson. Daml has no native currency, so it spends those lines on a token
+and one *atomic* delivery-versus-payment, not on faking privacy and chasing
+pull-payment refunds across transactions.
 
 ---
 
