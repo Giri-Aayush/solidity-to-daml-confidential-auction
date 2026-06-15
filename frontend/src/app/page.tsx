@@ -1,5 +1,6 @@
 import { Hero } from "@/components/hero";
 import { LedgerDemo } from "@/components/ledger-demo";
+import { CodeContrast } from "@/components/code-contrast";
 import { ConceptMap } from "@/components/concept-map";
 import { SiteFooter } from "@/components/site-footer";
 
@@ -26,6 +27,8 @@ export default function Home() {
           <LedgerDemo />
         </div>
       </section>
+
+      <CodeContrast />
 
       <ConceptMap />
       <SiteFooter />

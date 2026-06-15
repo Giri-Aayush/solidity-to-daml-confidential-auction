@@ -1,3 +1,5 @@
+@import url("https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -5,9 +7,9 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ------------------------------------------------------------------ *
- *  Confidential Auction - "cryptographic ledger / institutional terminal"
- *  Warm near-black canvas · bone ink · vault-amber (sealed/private) ·
- *  signal-red (public/exposed). Display: Fraunces. Data: IBM Plex Mono.
+ *  Confidential Auction - dark fintech (the "Remit" design language)
+ *  Near-black canvas · off-white ink · lavender accent (sealed / Canton) ·
+ *  signal-red (public / EVM). Display + body: General Sans. Data: JetBrains Mono.
  * ------------------------------------------------------------------ */
 
 @theme inline {
@@ -59,59 +61,64 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
 
-  --radius-sm: 2px;
-  --radius-md: 3px;
-  --radius-lg: 4px;
-  --radius-xl: 6px;
-  --radius-2xl: 10px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 10px;
+  --radius-2xl: 14px;
 }
 
 :root {
-  --radius: 3px;
+  --radius: 6px;
 
-  /* raw palette */
-  --bg: #0b0a09;
-  --bg-raised: #141210;
-  --bg-sunken: #070605;
-  --bone: #ece6da;
-  --ink-faint: #5c574d;
-  --line: #221f1b;
-  --vault: #e6ad3c;        /* sealed / private / Canton */
-  --signal: #d9543f;       /* public / exposed / EVM */
+  /* type */
+  --font-sans: "General Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "General Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* shadcn semantic tokens, mapped to the dark cryptographic theme */
+  /* raw palette (Remit) */
+  --bg: #0a0a0f;
+  --bg-raised: #14141a;
+  --bg-sunken: #0d0d12;
+  --bone: #e8e6f0;
+  --ink-faint: #65636f;
+  --line: rgba(160, 150, 200, 0.12);
+  --vault: #a78bfa;        /* sealed / private / Canton */
+  --signal: #ef4444;       /* public / exposed / EVM */
+
+  /* shadcn semantic tokens, mapped to the dark fintech theme */
   --background: var(--bg);
   --foreground: var(--bone);
   --card: var(--bg-raised);
   --card-foreground: var(--bone);
-  --popover: #161310;
+  --popover: #161320;
   --popover-foreground: var(--bone);
   --primary: var(--vault);
-  --primary-foreground: #1a1408;
-  --secondary: #1d1a16;
+  --primary-foreground: #0a0a0f;
+  --secondary: #1d1b26;
   --secondary-foreground: var(--bone);
-  --muted: #1a1714;
-  --muted-foreground: #9a9286;
-  --accent: #221f1a;
+  --muted: #1a1822;
+  --muted-foreground: #9b97a8;
+  --accent: #221f2e;
   --accent-foreground: var(--bone);
   --destructive: var(--signal);
-  --border: #26221d;
-  --input: #2a261f;
+  --border: rgba(160, 150, 200, 0.12);
+  --input: #2a2738;
   --ring: var(--vault);
 
   --chart-1: var(--vault);
   --chart-2: var(--signal);
-  --chart-3: #8fb46a;
-  --chart-4: #6f93c4;
-  --chart-5: #9a9286;
+  --chart-3: #10b981;
+  --chart-4: #3b82f6;
+  --chart-5: #9b97a8;
 
   --sidebar: var(--bg-raised);
   --sidebar-foreground: var(--bone);
   --sidebar-primary: var(--vault);
-  --sidebar-primary-foreground: #1a1408;
-  --sidebar-accent: #221f1a;
+  --sidebar-primary-foreground: #0a0a0f;
+  --sidebar-accent: #221f2e;
   --sidebar-accent-foreground: var(--bone);
-  --sidebar-border: #26221d;
+  --sidebar-border: rgba(160, 150, 200, 0.12);
   --sidebar-ring: var(--vault);
 }
 
@@ -123,25 +130,26 @@
     @apply font-sans;
     background-color: var(--bg);
     background-image:
-      radial-gradient(120% 80% at 50% -10%, rgba(230, 173, 60, 0.06), transparent 55%),
-      radial-gradient(100% 60% at 50% 120%, rgba(217, 84, 63, 0.04), transparent 60%);
+      radial-gradient(120% 80% at 50% -10%, rgba(139, 92, 246, 0.10), transparent 55%),
+      radial-gradient(100% 60% at 50% 120%, rgba(239, 68, 68, 0.04), transparent 60%);
     background-attachment: fixed;
     scroll-behavior: smooth;
   }
   body {
     @apply text-foreground;
     background: transparent;
-    font-feature-settings: "ss01", "cv01";
+    font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   ::selection {
-    background: var(--vault);
-    color: #1a1408;
+    background: var(--accent);
+    color: var(--bone);
   }
   h1, h2, h3 {
     font-family: var(--font-display);
     font-weight: 600;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.015em;
   }
   .tabular {
     font-variant-numeric: tabular-nums;
@@ -156,16 +164,16 @@
 .eyebrow {
   font-family: var(--font-mono);
   font-size: 0.7rem;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  text-transform: lowercase;
   color: var(--vault);
 }
 .kicker {
   font-family: var(--font-mono);
   font-size: 0.68rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #9a9286;
+  letter-spacing: 0.1em;
+  text-transform: lowercase;
+  color: #9b97a8;
 }
 
 /* ---- grain atmosphere ------------------------------------------------ */
@@ -175,12 +183,12 @@
   inset: 0;
   pointer-events: none;
   z-index: 60;
-  opacity: 0.045;
+  opacity: 0.04;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   mix-blend-mode: overlay;
 }
 
-/* hairline rule like ruled ledger paper */
+/* hairline rule */
 .rule {
   border: 0;
   height: 1px;
@@ -194,14 +202,12 @@
   align-items: center;
   gap: 0.4rem;
   padding: 0.05rem 0.5rem;
-  border-radius: 2px;
+  border-radius: 4px;
   color: transparent;
   user-select: none;
   min-width: 5.5rem;
-  background:
-    repeating-linear-gradient(90deg, #1c1814 0 7px, #14110d 7px 14px);
-  border: 1px solid #2a2118;
-  box-shadow: inset 0 0 0 1px rgba(230, 173, 60, 0.05);
+  background: repeating-linear-gradient(135deg, #1c1926 0 7px, #131019 7px 14px);
+  border: 1px solid rgba(160, 150, 200, 0.12);
   overflow: hidden;
 }
 .redaction::before {
@@ -214,14 +220,14 @@
   font-family: var(--font-mono);
   font-size: 0.8em;
   letter-spacing: -0.04em;
-  color: #3a3228;
+  color: #3a3550;
   animation: redact-shift 5.5s linear infinite;
 }
 .redaction::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(230, 173, 60, 0.12), transparent);
+  background: linear-gradient(90deg, transparent, rgba(167, 139, 250, 0.14), transparent);
   transform: translateX(-100%);
   animation: redact-sweep 3.8s ease-in-out infinite;
 }
@@ -252,7 +258,7 @@
   position: absolute;
   inset: -3px;
   border-radius: 999px;
-  border: 1px solid rgba(230, 173, 60, 0.4);
+  border: 1px solid rgba(167, 139, 250, 0.4);
   animation: seal-ring 2.6s ease-out infinite;
 }
 @keyframes seal-ring {
@@ -260,8 +266,90 @@
   100% { transform: scale(1.9); opacity: 0; }
 }
 
+/* ---- VS Code-style code windows ------------------------------------- */
+.vsc {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #1c1b22;
+  font-family: var(--font-mono);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+}
+.vsc.evm { border-color: rgba(239, 68, 68, 0.22); --tabaccent: #f0796f; }
+.vsc.canton { border-color: rgba(167, 139, 250, 0.28); --tabaccent: #a78bfa; }
+.vsc-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: 34px;
+  padding: 0 12px;
+  background: #26242e;
+  border-bottom: 1px solid #15141a;
+}
+.dots { display: inline-flex; gap: 7px; }
+.dots i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+.vsc-path {
+  font-size: 11px;
+  color: #8a8794;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vsc-tabs { display: flex; background: #1f1e25; }
+.vsc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  font-size: 11.5px;
+  color: #9b97a8;
+  background: #26242e;
+  border-right: 1px solid #15141a;
+}
+.vsc-tab.active { color: #e8e6f0; background: #1c1b22; border-top: 1.5px solid var(--tabaccent); }
+.vsc-tab [data-lucide] { width: 13px; height: 13px; color: var(--tabaccent); }
+.vsc-tab .x { color: #65636f; font-size: 13px; margin-left: 2px; }
+.vsc-body { display: grid; grid-template-columns: auto 1fr; flex: 1; min-height: 0; background: #1c1b22; }
+.gutter {
+  margin: 0;
+  padding: 14px 12px 14px 16px;
+  color: #56545f;
+  font-size: 12.5px;
+  line-height: 1.7;
+  text-align: right;
+  user-select: none;
+  white-space: pre;
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+}
+.vsc-body .code { margin: 0; padding: 14px 16px; overflow-x: auto; min-width: 0; }
+.vsc-body code { font-size: 12.5px; line-height: 1.7; white-space: pre; display: block; color: #d4d4d4; }
+/* vs code dark+ token palette */
+.t-c { color: #6a9955; }
+.t-k { color: #569cd6; }
+.t-ctl { color: #c586c0; }
+.t-t { color: #4ec9b0; }
+.t-f { color: #dcdcaa; }
+.t-n { color: #b5cea8; }
+.t-p { color: #d4d4d4; }
+.vsc-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 22px;
+  padding: 0 12px;
+  font-size: 10.5px;
+  color: #fff;
+}
+.vsc.evm .vsc-status { background: #7a3b35; }
+.vsc.canton .vsc-status { background: #5a45b0; }
+.vsc-status .right { color: rgba(255, 255, 255, 0.8); }
+
 /* thin custom scrollbar */
-* { scrollbar-width: thin; scrollbar-color: #2a261f transparent; }
+* { scrollbar-width: thin; scrollbar-color: #2a2738 transparent; }
 ::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-thumb { background: #2a261f; border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: #3a352c; }
+::-webkit-scrollbar-thumb { background: #2a2738; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3550; }
