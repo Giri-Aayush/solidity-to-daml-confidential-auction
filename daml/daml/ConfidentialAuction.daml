@@ -35,6 +35,7 @@ template Auction
   where
     signatory auctioneer
     observer invited
+    ensure auctionId /= ""
 
     -- | A bidder places a sealed bid. The `Bid` this creates is signed by the
     -- auctioneer and the bidder only, so it is confidential by construction:
@@ -82,7 +83,7 @@ template Auction
         bids <- forA uniqueCids \cid -> do
           bid <- fetch cid
           assertMsg "bid does not belong to this auction"
-            (bid.auctioneer == auctioneer && bid.auctionId == auctionId)
+            (bid.auctioneer == auctioneer && bid.auctionId == auctionId && bid.item == item)
           pure (cid, bid)
 
         -- Highest bid wins. `sortOn` is stable, so on a tie the earliest bid in
@@ -106,10 +107,9 @@ template Auction
 -- it, or learn that it exists.
 --
 -- One bid per bidder is NOT enforced on-ledger here. Daml 3 has no unique
--- contract keys, so an application that needs that invariant enforces it off-
--- ledger (for example, the auctioneer's app rejects a second submission, or
--- settlement keeps only each bidder's highest bid). This sample lets a bidder
--- place more than one; settlement still picks the single highest bid overall.
+-- contract keys, so an application that needs that invariant enforces it
+-- off-ledger (the auctioneer's app rejects a second submission). This sample
+-- lets a bidder place more than one; settlement simply picks the highest bid.
 template Bid
   with
     auctioneer : Party
@@ -119,6 +119,7 @@ template Bid
     amount : Decimal
   where
     signatory auctioneer, bidder
+    ensure amount > 0.0
 
     -- | Lets the auctioneer clear this bid during settlement. The bidder
     -- pre-authorized this by signing the bid, so the auctioneer can exercise it
