@@ -40,7 +40,7 @@ export function SiteFooter() {
 
         <hr className="rule my-8" />
         <p className="font-mono text-[0.7rem] text-ink-faint">
-          Built with Daml on Canton · Solidity / Foundry · Next.js. MIT licensed.
+          Built on Daml 3.4 (Canton) · Solidity 0.8.35 · Foundry · Next.js. MIT licensed.
         </p>
       </div>
     </footer>

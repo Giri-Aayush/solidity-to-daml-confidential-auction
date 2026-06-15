@@ -6,7 +6,7 @@ const GUIDE = `${REPO}/blob/main/guide/solidity-to-daml.md`;
 const STATS = [
   ["1 auction", "two implementations"],
   ["~90 ↦ ~70", "solidity loc ↦ daml loc"],
-  ["12 + 5", "foundry + daml tests, green"],
+  ["12 + 4", "foundry + daml tests, green"],
   ["0", "lines of privacy plumbing in daml"],
 ];
 
@@ -103,6 +103,13 @@ export function Hero() {
             </div>
           ))}
         </div>
+
+        <p
+          className="rise mt-5 font-mono text-xs text-ink-faint"
+          style={{ animationDelay: "480ms" }}
+        >
+          built on the latest stack: daml 3.4 on canton · solidity 0.8.35
+        </p>
       </div>
     </header>
   );
