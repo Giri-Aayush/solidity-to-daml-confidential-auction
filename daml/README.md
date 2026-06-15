@@ -2,15 +2,22 @@
 
 The Canton half of [From Solidity to Daml](../guide/solidity-to-daml.md). The same
 sealed-bid auction as [`../solidity`](../solidity), but with the privacy scaffolding
-removed - because on Canton, a bid contract is shared only with its stakeholders.
+removed (a bid is shared only with its stakeholders) and settlement modeled as an
+atomic delivery-versus-payment that moves real funds.
 
 - [`daml/ConfidentialAuction.daml`](daml/ConfidentialAuction.daml) - the templates
 - [`daml/Test.daml`](daml/Test.daml) - Daml Script tests, including the privacy proof
 
-## The model in three templates
+## The model in four templates
 
-- **`Auction`** - owned by the auctioneer; invited bidders are observers. Its
-  `PlaceBid` choice creates a confidential bid; `Settle` picks the winner.
+- **`Holding`** - a minimal fungible token: a self-contained stand-in for the Canton
+  Network Token Standard ([CIP-0056](https://github.com/canton-foundation/cips/blob/main/cip-0056/cip-0056.md))
+  `Holding` interface / Canton Coin. Daml has no native currency, so value is an
+  explicit contract.
+- **`Auction`** - owned by the auctioneer; invited bidders are observers. `PlaceBid`
+  seals a bid *and locks its amount* from a holding; `Settle` runs an atomic
+  delivery-versus-payment (the winner pays the beneficiary, losers are refunded, all
+  in one transaction) and is time-bounded by `settleBy`.
 - **`Bid`** - signed by the auctioneer *and one bidder*, and nobody else. That two-
   party signatory set is the entire privacy mechanism: no other party's ledger
   contains it.
@@ -41,8 +48,9 @@ dpm build
 dpm test
 ```
 
-Four scripts: `privacyAndSettlement` (privacy + winner selection),
-`nonInvitedCannotBid`, `closedBiddingRejectsLateBids`, and `cannotSettleWhileOpen`.
+Five scripts: `privacyAndSettlement` (privacy + atomic DvP), `nonInvitedCannotBid`,
+`closedBiddingRejectsLateBids`, `cannotSettleWhileOpen`, and
+`settlementRespectsDeadline`.
 
 ## Setup notes
 
@@ -57,3 +65,16 @@ Four scripts: `privacyAndSettlement` (privacy + winner selection),
 - This runs on Daml's in-memory script ledger. The same templates deploy to a
   Canton participant node unchanged - Canton is where the per-party privacy this
   model relies on is actually enforced across organizations.
+- **How this maps to production Canton** (deliberate simplifications):
+  - *Token:* `Holding` is operator-issued for self-containment; production settles
+    against the real CIP-0056 token standard (Holding + Allocation/DvP) through a
+    token registry, using explicit *disclosure* (disclosed contracts) rather than
+    the operator seeing every holding.
+  - *Discovery:* here the auctioneer is handed bid `ContractId`s directly; production
+    discovers them off-ledger by querying the Active Contract Set with
+    [PQS](https://docs.digitalasset.com/build/3.4/sdlc-howtos/applications/develop/pqs/index.html)
+    (a PostgreSQL view of the ledger), since Daml 3 has no key lookups.
+  - *Identity:* `auctionId` is a plain `Text`; production uses a guaranteed-unique id.
+  - *Divulgence:* a non-stakeholder never receives a `Bid`, so it cannot see one. (A
+    party can learn a contract by *witnessing* a transaction that uses it, but no
+    bidder witnesses another's bid here.)

@@ -7,9 +7,10 @@ itself can keep a secret.
 Sealed-bid auctions are the sharpest possible lens on this: confidentiality is
 their whole point. On a public EVM you can't actually hide a bid, so you fake it
 with a commit/reveal scheme, deposits, and a forfeiture rule. On Canton, a bid is
-shared only with the auctioneer and the bidder - so that machinery simply
-disappears. About a third of the Solidity contract is privacy scaffolding that has
-no counterpart in the Daml version.
+shared only with the auctioneer and the bidder, so the commit/reveal machinery
+disappears and settlement collapses to one atomic delivery-versus-payment. (Daml
+has no native currency, so it models value as a token holding; the two contracts
+end up a similar length but spend their lines very differently.)
 
 > Built as a developer-education artifact for OpenZeppelin's Canton stack: a
 > worked translation of a familiar EVM pattern into Canton's Daml-based,
@@ -21,7 +22,7 @@ no counterpart in the Daml version.
 | Path | What it is | Status |
 |---|---|---|
 | [`solidity/`](solidity/) | First-price sealed-bid auction via commit/reveal, with Foundry tests | ✅ 12/12 tests pass |
-| [`daml/`](daml/) | The same auction in Daml, private by construction, with Daml Script tests | ✅ 4/4 scripts pass |
+| [`daml/`](daml/) | The same auction in Daml, private by construction, with atomic DvP settlement and Daml Script tests | ✅ 5/5 scripts pass |
 | [`guide/solidity-to-daml.md`](guide/solidity-to-daml.md) | The translation guide: concept map, mental-model shift, side-by-side code | 📖 read this |
 
 **Start with the [guide](guide/solidity-to-daml.md).** Then read the two contracts
@@ -36,7 +37,8 @@ public forever. In Daml, a `Bid` contract names just two stakeholders (the
 auctioneer and that bidder), so no other party's ledger ever contains it. Privacy
 is a property of the ledger rather than a workaround, and the losing bids are never
 disclosed at all. The Daml test proves this on a live ledger: each bidder sees one
-bid, the auctioneer sees all of them.
+bid, the auctioneer sees all of them, and settlement pays the winner's funds to the
+seller while refunding losers in a single atomic transaction.
 
 ## Run it
 
@@ -48,7 +50,7 @@ manager (needs a Java 17+ runtime).
 # EVM reference - 12 Foundry tests (Solidity 0.8.35)
 cd solidity && forge test -vv
 
-# Canton/Daml version - 4 Daml Script tests, including the privacy proof (Daml 3.4)
+# Canton/Daml version - 5 Daml Script tests, including the privacy proof (Daml 3.4)
 cd daml && dpm test
 ```
 

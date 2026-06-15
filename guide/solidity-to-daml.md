@@ -22,18 +22,19 @@ Here is the same auction, both ways, measured by what the code spends its effort
 
 | | Solidity (`solidity/`) | Daml (`daml/`) |
 |---|---|---|
-| Lines of contract logic (no comments) | 90 | 70 |
 | Keeps bids secret using | commit/reveal + `keccak256` hashes | the ledger's privacy model |
 | Secrecy lasts | until the reveal phase (then public forever) | permanently (losers never see winning bid) |
-| Needs a deposit + forfeiture | yes - the only thing making commitments binding | no |
-| Needs an explicit timeline (commit window, reveal window) | yes | no |
-| Reentrancy surface | `withdraw()`, `auctionEnd()` (pull-payment pattern) | none |
+| Keeps a bid binding via | a forfeitable deposit | funds locked at bid, refunded atomically if you lose |
+| Needs an explicit timeline (commit window, reveal window) | yes | a single `settleBy` deadline |
+| Settling the winner + refunding losers | reveal → `withdraw()` pulls → `auctionEnd()`, across transactions | one atomic delivery-versus-payment |
 | Who can read a bid | everyone, after reveal | only the auctioneer and that bidder, ever |
 
-Roughly **a third of the Solidity contract is privacy scaffolding** - hashing,
-deposits, the reveal phase, forfeiture. In Daml that scaffolding doesn't exist,
-because the thing it was simulating (a bid only some parties can see) is a
-primitive of the platform.
+The commit/reveal **privacy scaffolding** - hashing, the reveal phase, forfeiture -
+has no counterpart in Daml: the thing it simulates (a bid only some parties can see)
+is a primitive of the platform. The two contracts end up a similar length, though,
+and that itself is the lesson: Daml has no native currency, so it spends its lines
+modelling a token and an *atomic* delivery-versus-payment instead of faking privacy
+and chasing pull-payment refunds across multiple transactions.
 
 ---
 
@@ -159,10 +160,10 @@ In Daml a choice can only see contracts explicitly handed to it, because privacy
 means there's no global set to iterate. So winner selection works in two moves:
 
 1. **Off-ledger**, the auctioneer (the only party who can see every `Bid`) gathers
-   the contract ids - in production via the Ledger API / a Canton app; in our test
-   via `query @Bid`.
+   the contract ids - in production by querying the Active Contract Set with PQS
+   (Daml 3 has no key lookups); in our test via `query @Bid`.
 2. **On-ledger**, it passes them to `Settle`, which fetches each, validates it
-   belongs to the auction, picks the max, clears the bids, and records the result:
+   belongs to the auction, picks the max, and settles the funds atomically:
 
 ```daml
 choice Settle : ContractId AuctionResult
@@ -170,25 +171,33 @@ choice Settle : ContractId AuctionResult
   controller auctioneer
   do
     assertMsg "close bidding before settling" (not biddingOpen)
-    -- de-duplicate the caller's list so a repeated id can't double-clear a bid
+    now <- getTime
+    assertMsg "the settlement window has passed" (now <= settleBy)
+    -- de-duplicate the caller's list so a repeated id can't double-spend a bid
     let uniqueCids = foldl (\seen c -> if c `elem` seen then seen else seen <> [c]) [] bidCids
     bids <- forA uniqueCids \cid -> do
       bid <- fetch cid
       assertMsg "bid does not belong to this auction"
-        (bid.auctioneer == auctioneer && bid.auctionId == auctionId)
+        (bid.auctioneer == auctioneer && bid.auctionId == auctionId && bid.item == item)
       pure (cid, bid)
     case sortOn (\(_, bid) -> negate bid.amount) bids of
       [] -> abort "cannot settle an auction with no bids"
-      ((_, winningBid) :: _) -> do
-        forA bids \(cid, _) -> exercise cid Clear   -- clear every bid
+      ((winCid, winBid) :: losers) -> do
+        exercise winCid Clear                       -- winner's locked funds...
+        create Holding with issuer = auctioneer, owner = beneficiary, amount = winBid.amount
+        forA losers \(cid, bid) -> do               -- ...losers refunded, same tx
+          exercise cid Clear
+          create Holding with issuer = auctioneer, owner = bid.bidder, amount = bid.amount
         create AuctionResult with
-          auctioneer; item; winner = winningBid.bidder; winningAmount = winningBid.amount
+          auctioneer; item; winner = winBid.bidder; winningAmount = winBid.amount
 ```
 
-Note `exercise cid Clear` archives a `Bid`. The auctioneer can do this *alone* even
-though the bid is co-signed, because the bidder pre-authorized the `Clear` choice by
-signing the bid in the first place. That's the Daml answer to "how do I let one
-party clean up state another party created."
+`exercise cid Clear` archives a `Bid`; the matching `create Holding` moves its locked
+funds - the winner's to the beneficiary, each loser's back to them - and it all
+happens in this one transaction. That atomicity *is* delivery-versus-payment, and it
+replaces Solidity's escrow-then-`withdraw` pull-payment dance. The auctioneer can
+clear a co-signed bid *alone* because the bidder pre-authorized the `Clear` choice by
+signing the bid.
 
 ---
 
@@ -197,17 +206,18 @@ party clean up state another party created."
 If you came from the Solidity file, here's what you'll notice is *gone*, and why:
 
 - **The commit hash (`keccak256`)** - nothing to hide-then-reveal; the bid is born private.
-- **The reveal phase and its deadline** - there is no reveal, so no second window.
-- **Deposits and forfeiture** - these existed only to make a hidden commitment
-  *binding* and to punish non-revealers. A Daml bid is a real, authorized contract
-  the instant it's created; there's nothing to enforce after the fact.
-- **`pendingReturns` / `withdraw()` / pull-payments** - no value is escrowed in the
-  contract, and there are no mid-execution external calls, so the reentrancy-driven
-  pull-payment pattern isn't needed.
-- **The `ended` flag and `auctionEnd()` transfer** - settlement is a single atomic
-  choice; there's no "anyone can poke it after the deadline" finalizer.
+- **The reveal phase** - privacy is native, so there's no hide-then-reveal window
+  (settlement still has a single `settleBy` deadline).
+- **Forfeiture** - losing bidders aren't punished; their locked funds are returned
+  atomically at settlement, so there's no "reveal or lose your deposit" threat.
+- **`pendingReturns` / `withdraw()` pull-payments** - settlement pays the winner's
+  funds to the seller and refunds every loser in one atomic transaction, so there's
+  no escrow-then-withdraw step and no reentrancy surface.
+- **The `ended` flag and the multi-step finalizer** - settlement is a single atomic
+  choice, not a "reveal, then withdraw, then poke `auctionEnd`" sequence.
 
-What's left in the Daml file is the auction and nothing but the auction.
+What's left is the auction plus the two things Daml makes you state explicitly: a
+token (there is no native currency) and an atomic delivery-versus-payment.
 
 ---
 
@@ -215,22 +225,24 @@ What's left in the Daml file is the auction and nothing but the auction.
 
 Honesty matters more than a clean story:
 
-- **Value/assets.** Solidity has native ETH (`msg.value`, balances). Daml has no
-  built-in currency; tokens are modeled as their own contracts (e.g. a `Holding`
-  with a transfer choice). A production auction would settle payment against such a
-  token; we left it out to keep the privacy lesson front-and-center.
-- **Time.** Our model uses an explicit `biddingOpen` flag the auctioneer flips,
-  rather than `block.timestamp`. Canton does have ledger time; gating bids on it is
-  a reasonable next iteration.
-- **Discovery.** "Who are the bidders?" is an input here (the `invited` list). On a
-  public EVM anyone can call; on Canton, parties and their visibility are managed
-  deliberately - which is a feature for institutional use cases, and a difference to
-  design around for open ones.
-- **Daml version.** This targets **Daml 3.x**, the current Canton-native line,
-  which removed contract keys (their uniqueness guarantee is incompatible with
-  Canton's multi-synchronizer design). So invariants like "one bid per bidder" are
-  enforced in application logic, and choices take `ContractId`s as arguments rather
-  than doing key lookups - which is exactly the `Settle` pattern above.
+- **Value / the token.** Daml has no native currency, so value is the `Holding`
+  template and settlement is an atomic DvP. That `Holding` is a self-contained
+  stand-in: production settles against the real Canton Network Token Standard
+  ([CIP-0056](https://github.com/canton-foundation/cips/blob/main/cip-0056/cip-0056.md))
+  - `Holding` + `Allocation` - through a token registry, and the auctioneer would
+  receive funds via *explicit disclosure* (disclosed contracts) rather than being the
+  token issuer as it is here.
+- **Discovery.** Here the auctioneer is handed the bid `ContractId`s; production
+  discovers them off-ledger by querying the Active Contract Set with
+  [PQS](https://docs.digitalasset.com/build/3.4/sdlc-howtos/applications/develop/pqs/index.html),
+  since Daml 3 removed contract keys.
+- **Identity & uniqueness.** `auctionId` is a plain `Text`, and "one bid per bidder"
+  is not enforced on-ledger (no contract keys in Daml 3). A production app uses a
+  guaranteed-unique id and enforces per-bidder uniqueness in application logic.
+- **Divulgence.** A non-stakeholder never receives a `Bid`, so it cannot see one. The
+  one nuance: a party *can* learn a contract by witnessing a transaction that uses it
+  ([divulgence](https://docs.digitalasset.com/overview/3.4/explanations/ledger-model/ledger-privacy.html)),
+  but no bidder witnesses another's bid here, so nothing leaks.
 
 ---
 
@@ -240,14 +252,15 @@ Honesty matters more than a clean story:
 # Solidity - 12 tests (0.8.35)
 cd solidity && forge test -vv
 
-# Daml - 4 scripts, including the privacy proof (Daml 3.4)
+# Daml - 5 scripts, including the privacy proof (Daml 3.4)
 cd daml && dpm test
 ```
 
 The Daml `privacyAndSettlement` script is the one to read: it places three bids
 from three parties and asserts, on a live ledger, that each bidder sees exactly one
-bid while the auctioneer sees all three. That single assertion is the thing the
-entire Solidity commit/reveal dance is trying to approximate.
+bid while the auctioneer sees all three - then settles, checking the winner's funds
+land with the seller and the losers are refunded, all atomically. That is the thing
+the entire Solidity commit/reveal-plus-withdraw dance is trying to approximate.
 
 ---
 
