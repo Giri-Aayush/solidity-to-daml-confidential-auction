@@ -38,6 +38,6 @@ beneficiary that reverts on receive (proving auctionEnd can't be bricked).
 
 ## Tooling note
 
-`forge` here is the build from the Aztec toolchain (`forge 1.4.1`); any recent
-Foundry works. `forge build` may emit lint *suggestions* (e.g. inline-assembly
-keccak) - those are style notes, not errors.
+Built with the latest [Foundry](https://book.getfoundry.sh/) (`forge 1.7.1`) and
+**Solidity 0.8.35**, pinned in the pragma. `forge build` may emit lint
+*suggestions* (e.g. inline-assembly keccak); those are style notes, not errors.

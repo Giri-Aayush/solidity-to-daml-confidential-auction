@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity 0.8.35;
 
 /// @title SealedBidAuction - a first-price sealed-bid auction on the EVM.
 /// @author From Solidity to Daml - a Confidential Auction on Canton
