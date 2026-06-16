@@ -127,9 +127,12 @@ template CoinAllocation
         pure Allocation_WithdrawResult with senderHoldingCids = [refund]; meta = emptyMetadata
 
 -- | A single-use right to bid, issued by the auctioneer to one invited bidder.
--- `PlaceBid` consumes it, so a second bid has no right left to consume: this is
--- the on-ledger one-bid-per-bidder guarantee that contract keys would otherwise
--- provide (an application of the standard "lock by archiving" pattern).
+-- `PlaceBid` consumes it (the standard "lock by archiving" pattern), so each
+-- right is good for exactly one bid. One bid *per bidder* then holds as long as
+-- the auctioneer issues exactly one right per bidder: `IssueBidRight` does not
+-- enforce that on-ledger (and without contract keys, which Canton 3.x lacks, it
+-- cannot cheaply), so the per-bidder property rests on the auctioneer here - a
+-- unique contract key would have enforced it against the auctioneer too.
 template BidRight
   with
     auctioneer : Party
