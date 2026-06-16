@@ -2,6 +2,7 @@ import { Hero } from "@/components/hero";
 import { LedgerDemo } from "@/components/ledger-demo";
 import { CodeContrast } from "@/components/code-contrast";
 import { ConceptMap } from "@/components/concept-map";
+import { Lifecycle } from "@/components/lifecycle";
 import { RunIt } from "@/components/run-it";
 import { SiteFooter } from "@/components/site-footer";
 
@@ -34,6 +35,7 @@ export default function Home() {
       <CodeContrast />
 
       <ConceptMap />
+      <Lifecycle />
       <RunIt />
       <SiteFooter />
     </main>
