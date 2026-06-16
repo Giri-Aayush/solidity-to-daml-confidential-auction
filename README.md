@@ -51,17 +51,29 @@ participant node.
 
 ## Run it
 
-Prerequisites: [Foundry](https://book.getfoundry.sh/) and
-[DPM](https://docs.digitalasset.com/build/3.4/dpm/dpm.html), the Daml package
-manager (needs a Java 17+ runtime).
+```bash
+git clone https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction
+cd solidity-to-daml-confidential-auction
+
+make test     # both suites: Solidity (12) + Daml (7), the same thing CI runs
+make canton   # run the auction on a REAL Canton node: boots a sandbox, runs the live proof, cleans up
+make web      # open the explainer site locally (Next.js on :3000)
+```
+
+Prerequisites: [Foundry](https://book.getfoundry.sh/) for the Solidity side, and
+[DPM](https://docs.digitalasset.com/build/3.4/dpm/dpm.html) (`dpm install 3.4.11`)
+plus a Java 17+ runtime for the Canton side. The scripts locate dpm, Java, and
+Foundry for you when they are installed in the usual places, so a fresh clone runs
+with no extra setup. The token-standard DARs are vendored in
+[`daml/dars/`](daml/dars/), so the build is offline.
+
+<details><summary>Prefer to run the suites directly?</summary>
 
 ```bash
-# EVM reference - 12 Foundry tests (Solidity 0.8.35)
-cd solidity && forge test -vv
-
-# Canton/Daml version - 7 Daml Script tests, including the privacy proof (Daml 3.4)
-cd daml && dpm test
+cd solidity && forge test -vv   # 12 Foundry tests (Solidity 0.8.35)
+cd daml && dpm test             # 7 Daml Script tests, including the privacy proof
 ```
+</details>
 
 ### On a real Canton node
 
