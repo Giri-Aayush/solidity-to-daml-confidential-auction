@@ -9,34 +9,135 @@
 -- bidder. Confidentiality is a property of the ledger, so the commit/reveal
 -- machinery disappears.
 --
--- This is the production-leaning version: bids LOCK real funds and settlement
--- is an atomic delivery-versus-payment (DvP) in a single transaction. Daml has
--- no native currency (unlike the EVM's ether), so value is modelled as a
--- `Holding` token: a deliberately minimal stand-in for the Canton Network Token
--- Standard (CIP-0056) `Holding` interface / Canton Coin. In production you would
--- settle against the real token standard (Holding + Allocation/DvP) and a token
--- registry rather than the operator-issued holding used here for self-containment.
+-- This version settles against the real Canton Network Token Standard
+-- (CIP-0056): bids lock funds held as the standard `Holding` interface, and
+-- settlement is an atomic delivery-versus-payment built on the standard
+-- `Allocation` interface. We ship a minimal registry (`AuctionCoin` /
+-- `CoinAllocation`) that *implements* those interfaces so the sample is
+-- self-contained; on a real network you swap it for the Amulet (Canton Coin)
+-- registry and the auction code is unchanged, because it is written against the
+-- interfaces, not our templates.
 --
--- Targets Daml 3.x (LF 2.x). Daml 3 removed contract keys, so this passes
--- `ContractId`s as choice arguments and enforces cross-contract invariants in
--- application logic; in production those ids are discovered off-ledger via PQS.
+-- Privacy of the money leg: every bid is allocated to the auctioneer (the
+-- settlement executor), never to the beneficiary, so the seller never learns a
+-- losing bid. At settlement the winning allocation is executed and its proceeds
+-- forwarded to the beneficiary; losing allocations are cancelled (refunded), all
+-- in one transaction.
+--
+-- Targets Daml 3.x / Daml-LF 2.1. Canton 3.x does not support contract keys (and
+-- unique keys are not planned for it), so one-bid-per-bidder is enforced on-ledger
+-- with a single-use `BidRight` rather than a key, and the auctioneer discovers bid
+-- `ContractId`s off-ledger (via PQS) and passes them to `Settle`.
 module ConfidentialAuction where
 
 import DA.List (sortOn)
 
--- | A fungible holding: a minimal stand-in for the CIP-0056 `Holding` interface.
--- The operator (here, the auctioneer) is the issuer/registry and sole signatory;
--- the owner is an observer who can see and (through auction choices) spend it.
--- A production token would be issued by a separate registry (e.g. Canton Coin).
-template Holding
+import Splice.Api.Token.HoldingV1
+import Splice.Api.Token.AllocationV1
+import Splice.Api.Token.MetadataV1
+
+-- | The instrument this sample issues. On a real network this would be Canton
+-- Coin, administered by the Amulet registry rather than the auctioneer.
+unitId : Party -> InstrumentId
+unitId admin = InstrumentId with admin; id = "CC"
+
+-- | The token-standard choices take an `ExtraArgs` carrying off-ledger context.
+-- Our registry needs none, so we pass an empty one.
+noExtraArgs : ExtraArgs
+noExtraArgs = ExtraArgs with context = emptyChoiceContext; meta = emptyMetadata
+
+-- | Archive an allocation's backing holding and return its value to the sender
+-- as a fresh, unlocked holding. Shared by the cancel and withdraw paths.
+releaseToSender : Party -> AllocationSpecification -> ContractId AuctionCoin -> Update (ContractId Holding)
+releaseToSender registry spec backing = do
+  archive backing
+  refund <- create AuctionCoin with
+    registry
+    owner = spec.transferLeg.sender
+    amount = spec.transferLeg.amount
+    locked = False
+  pure (toInterfaceContractId @Holding refund)
+
+-- | A fungible holding that implements the CIP-0056 `Holding` interface. For a
+-- self-contained sample the registry (issuer) is the auctioneer and the sole
+-- signatory; a production registry such as Canton Coin issues these instead.
+template AuctionCoin
   with
-    issuer : Party
+    registry : Party
     owner : Party
     amount : Decimal
+    locked : Bool
   where
-    signatory issuer
+    signatory registry
     observer owner
     ensure amount > 0.0
+
+    interface instance Holding for AuctionCoin where
+      view = HoldingView with
+        owner
+        instrumentId = unitId registry
+        amount
+        lock =
+          if locked
+            then Some Lock with
+              holders = [registry]
+              expiresAt = None
+              expiresAfter = None
+              context = Some "backing an auction bid allocation"
+            else None
+        meta = emptyMetadata
+
+-- | A reservation of one bidder's funds to a settlement leg, implementing the
+-- CIP-0056 `Allocation` interface (the standard's atomic-DvP primitive). The
+-- three interface choices delegate to the methods below: executing pays the
+-- receiver, cancelling and withdrawing refund the sender.
+template CoinAllocation
+  with
+    registry : Party
+    spec : AllocationSpecification
+    backing : ContractId AuctionCoin
+  where
+    signatory registry, spec.transferLeg.sender
+    ensure spec.transferLeg.amount > 0.0
+
+    interface instance Allocation for CoinAllocation where
+      view = AllocationView with
+        allocation = spec
+        holdingCids = [toInterfaceContractId @Holding backing]
+        meta = emptyMetadata
+
+      allocation_executeTransferImpl _self _arg = do
+        archive backing
+        paid <- create AuctionCoin with
+          registry
+          owner = spec.transferLeg.receiver
+          amount = spec.transferLeg.amount
+          locked = False
+        pure Allocation_ExecuteTransferResult with
+          senderHoldingCids = []
+          receiverHoldingCids = [toInterfaceContractId @Holding paid]
+          meta = emptyMetadata
+
+      allocation_cancelImpl _self _arg = do
+        refund <- releaseToSender registry spec backing
+        pure Allocation_CancelResult with senderHoldingCids = [refund]; meta = emptyMetadata
+
+      allocation_withdrawImpl _self _arg = do
+        refund <- releaseToSender registry spec backing
+        pure Allocation_WithdrawResult with senderHoldingCids = [refund]; meta = emptyMetadata
+
+-- | A single-use right to bid, issued by the auctioneer to one invited bidder.
+-- `PlaceBid` consumes it, so a second bid has no right left to consume: this is
+-- the on-ledger one-bid-per-bidder guarantee that contract keys would otherwise
+-- provide (an application of the standard "lock by archiving" pattern).
+template BidRight
+  with
+    auctioneer : Party
+    auctionId : Text
+    bidder : Party
+  where
+    signatory auctioneer
+    observer bidder
 
 -- | The coordination contract. The auctioneer owns it; invited bidders are
 -- observers, so they can see the auction and bid, but never each other's bids.
@@ -54,34 +155,74 @@ template Auction
     observer invited
     ensure auctionId /= ""
 
-    -- | A bidder places a sealed bid and LOCKS the bid amount from one of their
-    -- holdings in the same transaction. The resulting `Bid` is signed by the
-    -- auctioneer and the bidder only, so it is confidential by construction.
-    --
-    -- Authority works because the body runs with the Auction's signatory (the
-    -- auctioneer, who issues the holdings) plus the controller (the bidder), so
-    -- it can both consume the holding and create the auctioneer-signed `Bid`.
+    -- | Issue one bidder their single-use right to bid.
+    nonconsuming choice IssueBidRight : ContractId BidRight
+      with
+        bidder : Party
+      controller auctioneer
+      do
+        assertMsg "rights can only be issued to invited bidders" (bidder `elem` invited)
+        create BidRight with auctioneer, auctionId, bidder
+
+    -- | A bidder places a sealed bid: it consumes their one-time `BidRight`,
+    -- locks the bid amount from one of their holdings as a token-standard
+    -- `Allocation` (sender = bidder, receiver = the auctioneer/executor), and
+    -- records a `Bid`. The `Bid` is signed by the auctioneer and the bidder
+    -- only, so it is confidential by construction.
     nonconsuming choice PlaceBid : ContractId Bid
       with
         bidder : Party
         amount : Decimal
-        funds : ContractId Holding
+        funds : ContractId AuctionCoin
+        right : ContractId BidRight
       controller bidder
       do
         assertMsg "bidder must be invited to this auction" (bidder `elem` invited)
         assertMsg "bidding is closed" biddingOpen
-        h <- fetch funds
-        assertMsg "funds must be the bidder's own holding" (h.owner == bidder)
-        assertMsg "funds must be issued by this auction's operator" (h.issuer == auctioneer)
-        assertMsg "holding does not cover the bid" (h.amount >= amount)
-        -- Lock the bid amount: consume the holding, return any change.
+        assertMsg "bid must be positive" (amount > 0.0)
+
+        -- Spend the single-use right: a second bid finds no right to consume.
+        r <- fetch right
+        assertMsg "bid right does not match this auction and bidder"
+          (r.auctioneer == auctioneer && r.auctionId == auctionId && r.bidder == bidder)
+        archive right
+
+        -- Take the bidder's coin, split out the bid amount, return any change.
+        coin <- fetch funds
+        assertMsg "funds must be the bidder's own coin" (coin.owner == bidder)
+        assertMsg "funds must be issued by this auction's registry" (coin.registry == auctioneer)
+        assertMsg "coin does not cover the bid" (coin.amount >= amount)
         archive funds
-        if h.amount > amount
+        if coin.amount > amount
           then do
-            _ <- create Holding with issuer = auctioneer, owner = bidder, amount = h.amount - amount
+            _ <- create AuctionCoin with
+              registry = auctioneer, owner = bidder, amount = coin.amount - amount, locked = False
             pure ()
           else pure ()
-        create Bid with auctioneer, auctionId, item, bidder, amount
+
+        -- Lock the bid amount as the holding backing a standard Allocation.
+        backing <- create AuctionCoin with
+          registry = auctioneer, owner = bidder, amount, locked = True
+        now <- getTime
+        let spec = AllocationSpecification with
+              settlement = SettlementInfo with
+                executor = auctioneer
+                settlementRef = Reference with id = auctionId; cid = None
+                requestedAt = now
+                allocateBefore = settleBy
+                settleBefore = settleBy
+                meta = emptyMetadata
+              transferLegId = item
+              transferLeg = TransferLeg with
+                sender = bidder
+                receiver = auctioneer
+                amount
+                instrumentId = unitId auctioneer
+                meta = emptyMetadata
+        allocCid <- create CoinAllocation with registry = auctioneer; spec; backing
+        create Bid with
+          auctioneer, auctionId, item, bidder, beneficiary, amount
+          allocation = toInterfaceContractId @Allocation allocCid
 
     -- | The auctioneer closes bidding; the reissued Auction rejects late bids.
     choice CloseBidding : ContractId Auction
@@ -90,9 +231,9 @@ template Auction
 
     -- | Settle the auction as an atomic DvP. The auctioneer gathers the bid
     -- contract ids off-ledger (via PQS in production) and passes them in. In one
-    -- transaction: the winner's locked funds pay the beneficiary, every losing
-    -- bid's funds are returned, and the result is recorded; either all of that
-    -- happens or none of it does.
+    -- transaction the winning allocation pays the beneficiary, every losing
+    -- allocation is cancelled (refunded), and the result is recorded: either all
+    -- of that happens or none of it does.
     choice Settle : ContractId AuctionResult
       with
         bidCids : [ContractId Bid]
@@ -117,42 +258,57 @@ template Auction
         case sortOn (\(_, bid) -> negate bid.amount) bids of
           [] -> abort "cannot settle an auction with no bids"
           ((winCid, winBid) :: losers) -> do
-            -- DvP leg 1: the winner's locked funds pay the beneficiary.
-            exercise winCid Clear
-            create Holding with issuer = auctioneer, owner = beneficiary, amount = winBid.amount
-            -- DvP leg 2: every loser's locked funds are returned, atomically.
-            forA losers \(cid, bid) -> do
-              exercise cid Clear
-              create Holding with issuer = auctioneer, owner = bid.bidder, amount = bid.amount
+            -- DvP: execute the winner's allocation, refund the losers, atomically.
+            exercise winCid AwardToBeneficiary
+            _ <- forA losers \(cid, _) -> exercise cid Refund
             create AuctionResult with
               auctioneer
               item
               winner = winBid.bidder
               winningAmount = winBid.amount
 
--- | A single sealed bid that also represents the bidder's locked funds. Its
--- stakeholders are exactly the auctioneer and the bidder: no other party can
--- fetch it, query it, or learn that it exists.
+-- | A single sealed bid, co-signed by the auctioneer and the bidder and nobody
+-- else: no other party can fetch it, query it, or learn that it exists. It
+-- carries the bidder's locked funds as a token-standard `Allocation`.
 --
--- One bid per bidder is NOT enforced on-ledger (Daml 3 has no unique contract
--- keys); a production app enforces that off-ledger, e.g. the auctioneer's app
--- rejects a second submission.
+-- Co-signing is also what lets settlement work without the bidder being online:
+-- the auctioneer exercises `AwardToBeneficiary` / `Refund` (controller = the
+-- auctioneer), and because the bidder signed this `Bid`, the bidder's authority
+-- is present in the choice body, which is exactly what the standard `Allocation`
+-- choices require.
 template Bid
   with
     auctioneer : Party
     auctionId : Text
     item : Text
     bidder : Party
+    beneficiary : Party
     amount : Decimal
+    allocation : ContractId Allocation
   where
     signatory auctioneer, bidder
     ensure amount > 0.0
 
-    -- | Lets the auctioneer clear this bid during settlement. The bidder
-    -- pre-authorized this by signing the bid, so the auctioneer can do it alone.
-    choice Clear : ()
+    -- | Winner: execute the allocation (proceeds reach the auctioneer/executor)
+    -- and forward them to the beneficiary, in one transaction.
+    choice AwardToBeneficiary : ()
       controller auctioneer
-      do pure ()
+      do
+        res <- exercise allocation Allocation_ExecuteTransfer with extraArgs = noExtraArgs
+        _ <- forA res.receiverHoldingCids \hc -> do
+          let coinCid = fromInterfaceContractId @AuctionCoin hc
+          c <- fetch coinCid
+          archive coinCid
+          create AuctionCoin with
+            registry = auctioneer, owner = beneficiary, amount = c.amount, locked = False
+        pure ()
+
+    -- | Loser: cancel the allocation, refunding the bidder's locked funds.
+    choice Refund : ()
+      controller auctioneer
+      do
+        _ <- exercise allocation Allocation_Cancel with extraArgs = noExtraArgs
+        pure ()
 
 -- | The outcome, disclosed only to the auctioneer and the winning bidder.
 -- Losing bidders never learn the winning amount.

@@ -1,0 +1,3 @@
+# build output and local runtime artifacts
+.daml/
+log/

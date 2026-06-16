@@ -1,9 +1,9 @@
--- | Daml Script tests for the Confidential Auction (DvP version).
+-- | Daml Script tests for the Confidential Auction (token-standard DvP version).
 --
 -- The headline test, `privacyAndSettlement`, proves on a running ledger that a
 -- bidder sees exactly their own bid and nothing else, and that settlement moves
--- real funds atomically: the winner pays the beneficiary while losers are
--- refunded, all in one transaction.
+-- real funds atomically through the CIP-0056 `Allocation` interface: the winner
+-- pays the beneficiary while losers are refunded, all in one transaction.
 module Test where
 
 import ConfidentialAuction
@@ -11,11 +11,16 @@ import Daml.Script
 import DA.Assert ((===))
 import DA.Time (addRelTime, hours)
 
--- Issue a holding to each party from the operator (the auctioneer plays the
--- registry role in this self-contained sample).
-fund : Party -> Party -> Decimal -> Script (ContractId Holding)
-fund operator owner amount =
-  submit operator do createCmd Holding with issuer = operator, owner, amount
+-- Issue a token-standard holding to a party. The auctioneer plays the registry
+-- role in this self-contained sample, so it is the issuer.
+fund : Party -> Party -> Decimal -> Script (ContractId AuctionCoin)
+fund registry owner amount =
+  submit registry do createCmd AuctionCoin with registry, owner, amount, locked = False
+
+-- Issue an invited bidder their single-use right to bid.
+invite : Party -> ContractId Auction -> Party -> Script (ContractId BidRight)
+invite auctioneer auctionCid bidder =
+  submit auctioneer do exerciseCmd auctionCid IssueBidRight with bidder
 
 -- | Sealed bids stay private; settlement is an atomic DvP that pays the
 -- beneficiary from the winner and refunds the losers.
@@ -42,10 +47,14 @@ privacyAndSettlement = script do
       settleBy = addRelTime now (hours 24)
       biddingOpen = True
 
-  -- Each bidder seals a bid and locks the amount from their holding.
-  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 30.0, funds = aliceFunds
-  bobBid <- submit bob do exerciseCmd auctionCid PlaceBid with bidder = bob, amount = 50.0, funds = bobFunds
-  carolBid <- submit carol do exerciseCmd auctionCid PlaceBid with bidder = carol, amount = 40.0, funds = carolFunds
+  aliceRight <- invite auctioneer auctionCid alice
+  bobRight <- invite auctioneer auctionCid bob
+  carolRight <- invite auctioneer auctionCid carol
+
+  -- Each bidder seals a bid and locks the amount as a standard Allocation.
+  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 30.0, funds = aliceFunds, right = aliceRight
+  bobBid <- submit bob do exerciseCmd auctionCid PlaceBid with bidder = bob, amount = 50.0, funds = bobFunds, right = bobRight
+  carolBid <- submit carol do exerciseCmd auctionCid PlaceBid with bidder = carol, amount = 40.0, funds = carolFunds, right = carolRight
 
   -- Privacy: each bidder sees exactly their OWN bid, by content not just count.
   aliceView <- query @Bid alice
@@ -72,13 +81,13 @@ privacyAndSettlement = script do
 
   -- DvP outcome: the seller received the winning 50; the losers were refunded
   -- their own locked amounts; the winner's funds are gone (paid to the seller).
-  sellerFunds <- query @Holding seller
-  map (\(_, h) -> h.amount) sellerFunds === [50.0]
-  aliceRefund <- query @Holding alice
-  map (\(_, h) -> h.amount) aliceRefund === [30.0]
-  carolRefund <- query @Holding carol
-  map (\(_, h) -> h.amount) carolRefund === [40.0]
-  bobFundsAfter <- query @Holding bob
+  sellerFunds <- query @AuctionCoin seller
+  map (\(_, c) -> c.amount) sellerFunds === [50.0]
+  aliceRefund <- query @AuctionCoin alice
+  map (\(_, c) -> c.amount) aliceRefund === [30.0]
+  carolRefund <- query @AuctionCoin carol
+  map (\(_, c) -> c.amount) carolRefund === [40.0]
+  bobFundsAfter <- query @AuctionCoin bob
   bobFundsAfter === []
 
   -- Outcome is need-to-know: the winner sees it, neither loser does.
@@ -91,7 +100,34 @@ privacyAndSettlement = script do
 
   pure ()
 
--- | A party who was not invited cannot bid.
+-- | One bid per bidder is enforced on-ledger: the single-use `BidRight` is
+-- consumed by the first bid, so a second bid has no right left to spend.
+oneBidPerBidder : Script ()
+oneBidPerBidder = script do
+  auctioneer <- allocateParty "Auctioneer"
+  seller <- allocateParty "Seller"
+  alice <- allocateParty "Alice"
+  now <- getTime
+
+  firstFunds <- fund auctioneer alice 30.0
+  secondFunds <- fund auctioneer alice 30.0
+  auctionCid <- submit auctioneer do
+    createCmd Auction with
+      auctioneer
+      auctionId = "PAINTING-2026"
+      item = "Rare painting"
+      beneficiary = seller
+      invited = [alice]
+      settleBy = addRelTime now (hours 24)
+      biddingOpen = True
+
+  aliceRight <- invite auctioneer auctionCid alice
+  -- First bid consumes the right.
+  _ <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 20.0, funds = firstFunds, right = aliceRight
+  -- Second bid reusing the now-spent right is rejected by the ledger.
+  alice `submitMustFail` exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 25.0, funds = secondFunds, right = aliceRight
+
+-- | A party who was not invited cannot get a right, nor bid with someone else's.
 nonInvitedCannotBid : Script ()
 nonInvitedCannotBid = script do
   auctioneer <- allocateParty "Auctioneer"
@@ -111,7 +147,11 @@ nonInvitedCannotBid = script do
       settleBy = addRelTime now (hours 24)
       biddingOpen = True
 
-  mallory `submitMustFail` exerciseCmd auctionCid PlaceBid with bidder = mallory, amount = 999.0, funds = malloryFunds
+  -- A non-invited party cannot be issued a right.
+  auctioneer `submitMustFail` exerciseCmd auctionCid IssueBidRight with bidder = mallory
+  -- Even handed an invited bidder's right, a non-invited bid is rejected.
+  aliceRight <- invite auctioneer auctionCid alice
+  mallory `submitMustFail` exerciseCmd auctionCid PlaceBid with bidder = mallory, amount = 999.0, funds = malloryFunds, right = aliceRight
 
 -- | Once the auctioneer closes bidding, late bids are rejected.
 closedBiddingRejectsLateBids : Script ()
@@ -132,8 +172,9 @@ closedBiddingRejectsLateBids = script do
       settleBy = addRelTime now (hours 24)
       biddingOpen = True
 
+  aliceRight <- invite auctioneer auctionCid alice
   closedCid <- submit auctioneer do exerciseCmd auctionCid CloseBidding
-  alice `submitMustFail` exerciseCmd closedCid PlaceBid with bidder = alice, amount = 10.0, funds = aliceFunds
+  alice `submitMustFail` exerciseCmd closedCid PlaceBid with bidder = alice, amount = 10.0, funds = aliceFunds, right = aliceRight
 
 -- | Settlement is refused while bidding is still open.
 cannotSettleWhileOpen : Script ()
@@ -154,7 +195,8 @@ cannotSettleWhileOpen = script do
       settleBy = addRelTime now (hours 24)
       biddingOpen = True
 
-  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 10.0, funds = aliceFunds
+  aliceRight <- invite auctioneer auctionCid alice
+  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 10.0, funds = aliceFunds, right = aliceRight
   auctioneer `submitMustFail` exerciseCmd auctionCid Settle with bidCids = [aliceBid]
 
 -- | Settlement after the deadline is rejected (time-bounded DvP).
@@ -176,7 +218,8 @@ settlementRespectsDeadline = script do
       settleBy = addRelTime now (hours 1)
       biddingOpen = True
 
-  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 10.0, funds = aliceFunds
+  aliceRight <- invite auctioneer auctionCid alice
+  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 10.0, funds = aliceFunds, right = aliceRight
   closedCid <- submit auctioneer do exerciseCmd auctionCid CloseBidding
 
   passTime (hours 2) -- advance past settleBy

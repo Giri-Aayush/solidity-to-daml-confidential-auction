@@ -6,9 +6,19 @@ dependencies:
   - daml-prim
   - daml-stdlib
   - daml-script
+# The Canton Network Token Standard (CIP-0056) interface packages. The auction
+# settles against these real interfaces (Holding + Allocation/DvP) rather than a
+# bespoke token. DARs are the prebuilt 1.0.0 releases from hyperledger-labs/splice
+# (daml/dars/), vendored under dars/ so the sample builds offline.
+data-dependencies:
+  - dars/splice-api-token-metadata-v1-1.0.0.dar
+  - dars/splice-api-token-holding-v1-1.0.0.dar
+  - dars/splice-api-token-allocation-v1-1.0.0.dar
 # This sample keeps templates and Daml Script tests in one package for
 # readability. A production app would put tests in their own package so
 # daml-script is never uploaded to the ledger; we silence that one advisory
-# warning here rather than split a three-template teaching example.
+# warning here rather than split a teaching example.
 build-options:
   - -Wno-template-interface-depends-on-daml-script
+  # Match the Daml-LF version of the token-standard DARs (LF 2.1).
+  - --target=2.1
