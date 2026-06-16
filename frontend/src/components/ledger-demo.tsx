@@ -410,8 +410,8 @@ function ResultRow({
 }
 
 // The viewer's OWN settlement, respecting privacy: the winner sees their payment,
-// each loser sees their own refund, and the auctioneer (issuer + beneficiary) sees
-// the incoming winning funds. No party sees another's money move.
+// each loser sees their own refund, and the auctioneer (the settlement executor)
+// sees the winning funds settle through to the seller. No party sees another's move.
 function SettlementRow({
   result,
   viewer,
@@ -426,7 +426,7 @@ function SettlementRow({
   let Icon = RotateCcw;
   let cls = "text-muted-foreground";
   if (viewer === AUCTIONEER) {
-    text = `received ${result.amount} ${UNIT}`;
+    text = `settled ${result.amount} ${UNIT} to seller`;
     Icon = Landmark;
     cls = "text-vault";
   } else if (viewer === result.winner) {

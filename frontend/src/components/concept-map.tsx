@@ -1,11 +1,13 @@
 const ROWS: [string, string, string][] = [
   ["mapping(address => Bid)", "one Bid contract per bidder", "no shared map to read"],
+  ["AlreadyCommitted guard", "single-use BidRight", "one bid per bidder, on-ledger"],
   ["msg.sender", "choice controller", "authenticated by the ledger"],
   ["require(msg.sender == owner)", "controller / signatory", "authz is part of the type"],
+  ["deposit in ether (msg.value)", "CIP-0056 Holding", "value is a standard token"],
   ["mutate storage", "archive + re-create", "contracts are immutable"],
   ["keccak256 commit + reveal", "- nothing -", "privacy is native"],
   ["forfeiture (reveal-or-lose)", "- nothing -", "losers refunded atomically"],
-  ["pendingReturns / withdraw", "one atomic DvP", "no pull-payment, no reentrancy"],
+  ["pendingReturns / withdraw", "one token-standard DvP", "no pull-payment, no reentrancy"],
   ["event / emit", "stakeholders see the tx", "no separate event log"],
 ];
 

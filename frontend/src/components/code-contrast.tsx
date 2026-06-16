@@ -1,7 +1,7 @@
 import { FileCode } from "lucide-react";
 
 const SOL_GUTTER = Array.from({ length: 18 }, (_, i) => i + 1).join("\n");
-const DAML_GUTTER = Array.from({ length: 14 }, (_, i) => i + 1).join("\n");
+const DAML_GUTTER = Array.from({ length: 16 }, (_, i) => i + 1).join("\n");
 
 const SOL_CODE = `<span class="t-c">// commit phase: hide the bid behind a hash + a deposit</span>
 <span class="t-k">function</span> <span class="t-f">commit</span>(<span class="t-t">bytes32</span> blindedBid) <span class="t-k">external</span> <span class="t-k">payable</span> onlyBefore(biddingEnd) {
@@ -22,16 +22,18 @@ const SOL_CODE = `<span class="t-c">// commit phase: hide the bid behind a hash 
     <span class="t-c">// ... refunds, pendingReturns, withdraw, forfeiture</span>
 }`;
 
-const DAML_CODE = `<span class="t-c">-- a single sealed bid. its stakeholders are exactly the</span>
-<span class="t-c">-- auctioneer and the bidder; no other party can fetch it,</span>
-<span class="t-c">-- query it, or learn that it exists.</span>
+const DAML_CODE = `<span class="t-c">-- a single sealed bid, co-signed by the auctioneer and the</span>
+<span class="t-c">-- bidder and nobody else. it carries the bidder's locked</span>
+<span class="t-c">-- funds as a token-standard Allocation.</span>
 <span class="t-k">template</span> <span class="t-t">Bid</span>
   <span class="t-k">with</span>
     auctioneer <span class="t-p">:</span> <span class="t-t">Party</span>
     auctionId <span class="t-p">:</span> <span class="t-t">Text</span>
     item <span class="t-p">:</span> <span class="t-t">Text</span>
     bidder <span class="t-p">:</span> <span class="t-t">Party</span>
+    beneficiary <span class="t-p">:</span> <span class="t-t">Party</span>
     amount <span class="t-p">:</span> <span class="t-t">Decimal</span>
+    allocation <span class="t-p">:</span> <span class="t-t">ContractId</span> <span class="t-t">Allocation</span>
   <span class="t-k">where</span>
     <span class="t-k">signatory</span> auctioneer, bidder
     <span class="t-k">ensure</span> amount <span class="t-p">&gt;</span> <span class="t-n">0.0</span>

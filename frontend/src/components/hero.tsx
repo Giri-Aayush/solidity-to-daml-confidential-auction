@@ -6,8 +6,8 @@ const GUIDE = `${REPO}/blob/main/guide/solidity-to-daml.md`;
 
 const STATS = [
   ["1 auction", "two implementations"],
-  ["1 tx", "atomic dvp settlement in daml"],
-  ["12 + 5", "foundry + daml tests, green"],
+  ["1 tx", "token-standard dvp settlement"],
+  ["12 + 7", "foundry + daml tests, green"],
   ["0", "lines of privacy plumbing in daml"],
 ];
 
@@ -148,7 +148,7 @@ export function Hero() {
         </div>
 
         <p className="rise mt-5 font-mono text-xs text-ink-faint" style={{ animationDelay: "480ms" }}>
-          built on the latest stack: daml 3.4 on canton · solidity 0.8.35
+          built on the latest stack: daml 3.4 on canton · cip-0056 token standard · solidity 0.8.35
         </p>
       </div>
     </header>
