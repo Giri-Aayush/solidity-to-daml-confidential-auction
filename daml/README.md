@@ -3,26 +3,41 @@
 The Canton half of [From Solidity to Daml](../guide/solidity-to-daml.md). The same
 sealed-bid auction as [`../solidity`](../solidity), but with the privacy scaffolding
 removed (a bid is shared only with its stakeholders) and settlement modeled as an
-atomic delivery-versus-payment that moves real funds.
+atomic delivery-versus-payment against the **Canton Network Token Standard**
+([CIP-0056](https://docs.digitalasset.com/integrate/devnet/token-standard.html)).
 
 - [`daml/ConfidentialAuction.daml`](daml/ConfidentialAuction.daml) - the templates
 - [`daml/Test.daml`](daml/Test.daml) - Daml Script tests, including the privacy proof
+- [`dars/`](dars/) - the prebuilt CIP-0056 interface DARs we build against
 
-## The model in four templates
+## The model
 
-- **`Holding`** - a minimal fungible token: a self-contained stand-in for the Canton
-  Network Token Standard ([CIP-0056](https://github.com/canton-foundation/cips/blob/main/cip-0056/cip-0056.md))
-  `Holding` interface / Canton Coin. Daml has no native currency, so value is an
-  explicit contract.
+The auction is written against the real token-standard interfaces, and ships a
+minimal registry that implements them so the sample builds and runs offline:
+
+- **`AuctionCoin`** - a holding that *implements the CIP-0056 `Holding` interface*.
+  Self-contained stand-in for Canton Coin; on a real network this is the Amulet
+  registry's holding instead, and the auction code does not change.
+- **`CoinAllocation`** - *implements the CIP-0056 `Allocation` interface*, the
+  standard's atomic-DvP primitive. Its `Allocation_ExecuteTransfer` pays the
+  receiver; `Allocation_Cancel` / `_Withdraw` refund the sender.
 - **`Auction`** - owned by the auctioneer; invited bidders are observers. `PlaceBid`
-  seals a bid *and locks its amount* from a holding; `Settle` runs an atomic
-  delivery-versus-payment (the winner pays the beneficiary, losers are refunded, all
-  in one transaction) and is time-bounded by `settleBy`.
-- **`Bid`** - signed by the auctioneer *and one bidder*, and nobody else. That two-
-  party signatory set is the entire privacy mechanism: no other party's ledger
-  contains it.
+  consumes a single-use `BidRight`, locks the bid amount as a standard `Allocation`,
+  and records a `Bid`; `Settle` executes the winning allocation and cancels the
+  losers in one transaction, time-bounded by `settleBy`.
+- **`BidRight`** - a single-use right issued per invited bidder. `PlaceBid` consumes
+  it, so a second bid has no right left to spend: this is the on-ledger
+  one-bid-per-bidder guarantee (Canton 3.x has no contract keys to do it with).
+- **`Bid`** - signed by the auctioneer *and one bidder*, and nobody else. That
+  two-party signatory set is the entire privacy mechanism. Co-signing is also what
+  lets the auctioneer settle while the bidder is offline: the bidder's authority,
+  which the standard `Allocation` choices require, is present because they signed.
 - **`AuctionResult`** - observed only by the winner, so losing bidders never learn
   the clearing price.
+
+Bids are allocated to the auctioneer (the settlement executor), never to the
+beneficiary, so the seller never sees a losing bid; at settlement the winning
+proceeds are forwarded to the beneficiary atomically.
 
 ## What to read first
 
@@ -48,33 +63,49 @@ dpm build
 dpm test
 ```
 
-Five scripts: `privacyAndSettlement` (privacy + atomic DvP), `nonInvitedCannotBid`,
-`closedBiddingRejectsLateBids`, `cannotSettleWhileOpen`, and
-`settlementRespectsDeadline`.
+Seven scripts: `privacyAndSettlement` (privacy + token-standard DvP),
+`oneBidPerBidder` (on-ledger single bid), `nonInvitedCannotBid`,
+`closedBiddingRejectsLateBids`, `cannotSettleWhileOpen`, `settlementRespectsDeadline`,
+and `explicitDisclosure` (using a disclosed contract).
+
+## Run it on a real Canton node
+
+`dpm test` uses the in-memory script ledger. The *same* DAR runs unchanged on a real
+Canton participant - `dpm sandbox` boots a full Canton node in one process, no Docker:
+
+```bash
+dpm build
+# boot Canton with the auction package loaded; gRPC ledger API on 6865
+dpm sandbox --dar .daml/dist/confidential-auction-1.0.0.dar
+# in another shell, run the proof against the live ledger:
+dpm script --dar .daml/dist/confidential-auction-1.0.0.dar \
+  --script-name Test:privacyAndSettlement --ledger-host localhost --ledger-port 6865
+```
 
 ## Setup notes
 
 - Built and tested against **Daml 3.4.11** with **DPM** (the Daml package manager).
   Install via `curl -sSL https://get.digitalasset.com/install/install.sh | sh`, then
   `dpm install 3.4.11`; needs a **Java 17+** runtime on `PATH`.
-- Daml 3 removed contract keys (their uniqueness guarantee is incompatible with
-  Canton's multi-synchronizer design), so one-bid-per-bidder is not enforced
-  on-ledger here; an app enforces that off-ledger. Templates and tests share one
-  package for readability (production would split them so daml-script isn't
-  uploaded to the participant).
-- This runs on Daml's in-memory script ledger. The same templates deploy to a
-  Canton participant node unchanged - Canton is where the per-party privacy this
-  model relies on is actually enforced across organizations.
-- **How this maps to production Canton** (deliberate simplifications):
-  - *Token:* `Holding` is operator-issued for self-containment; production settles
-    against the real CIP-0056 token standard (Holding + Allocation/DvP) through a
-    token registry, using explicit *disclosure* (disclosed contracts) rather than
-    the operator seeing every holding.
-  - *Discovery:* here the auctioneer is handed bid `ContractId`s directly; production
-    discovers them off-ledger by querying the Active Contract Set with
-    [PQS](https://docs.digitalasset.com/build/3.4/sdlc-howtos/applications/develop/pqs/index.html)
-    (a PostgreSQL view of the ledger), since Daml 3 has no key lookups.
-  - *Identity:* `auctionId` is a plain `Text`; production uses a guaranteed-unique id.
-  - *Divulgence:* a non-stakeholder never receives a `Bid`, so it cannot see one. (A
-    party can learn a contract by *witnessing* a transaction that uses it, but no
-    bidder witnesses another's bid here.)
+- The token-standard interface DARs (`splice-api-token-{metadata,holding,allocation}-v1`,
+  the prebuilt `1.0.0` releases from
+  [hyperledger-labs/splice](https://github.com/hyperledger-labs/splice/tree/main/daml/dars))
+  are vendored under [`dars/`](dars/) and listed as `data-dependencies`, so the build
+  is offline and reproducible. They are Daml-LF 2.1, which `daml.yaml` targets.
+- Templates and tests share one package for readability (production would split them
+  so daml-script is never uploaded to the participant).
+
+### How this maps to production Canton (remaining simplifications)
+
+- *Registry:* `AuctionCoin` is auctioneer-issued for self-containment. On the
+  Canton Network you settle against the live Amulet (Canton Coin) registry through
+  its `AllocationFactory`; the auction code is unchanged because it targets the
+  `Holding` / `Allocation` interfaces, not our templates.
+- *Network:* `dpm sandbox` is a single participant. Cross-organization privacy is
+  enforced when each party is hosted on its own participant across a synchronizer;
+  the per-party visibility this sample relies on is the same mechanism.
+- *Discovery:* here the auctioneer is handed bid `ContractId`s directly; production
+  discovers them off-ledger by querying the Active Contract Set with
+  [PQS](https://docs.digitalasset.com/build/3.4/component-howtos/pqs/index.html)
+  (`dpm pqs`, a PostgreSQL view of the ledger), since Canton 3.x has no key lookups.
+- *Identity:* `auctionId` is a plain `Text`; production uses a guaranteed-unique id.

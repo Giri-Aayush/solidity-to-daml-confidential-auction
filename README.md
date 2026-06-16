@@ -13,8 +13,9 @@ their whole point. On a public EVM you can't actually hide a bid, so you fake it
 with a commit/reveal scheme, deposits, and a forfeiture rule. On Canton, a bid is
 shared only with the auctioneer and the bidder, so the commit/reveal machinery
 disappears and settlement collapses to one atomic delivery-versus-payment. (Daml
-has no native currency, so it models value as a token holding; the two contracts
-end up a similar length but spend their lines very differently.)
+has no native currency, so value is held as the Canton Network Token Standard's
+`Holding` and moved through its `Allocation` interface; the two contracts end up a
+similar length but spend their lines very differently.)
 
 > Built as a developer-education artifact for OpenZeppelin's Canton stack: a
 > worked translation of a familiar EVM pattern into Canton's Daml-based,
@@ -26,7 +27,7 @@ end up a similar length but spend their lines very differently.)
 | Path | What it is | Status |
 |---|---|---|
 | [`solidity/`](solidity/) | First-price sealed-bid auction via commit/reveal, with Foundry tests | ✅ 12/12 tests pass |
-| [`daml/`](daml/) | The same auction in Daml, private by construction, with atomic DvP settlement and Daml Script tests | ✅ 5/5 scripts pass |
+| [`daml/`](daml/) | The same auction in Daml, private by construction, settled through the Canton Network Token Standard (CIP-0056) with on-ledger bid rights and Daml Script tests | ✅ 7/7 scripts pass |
 | [`guide/solidity-to-daml.md`](guide/solidity-to-daml.md) | The translation guide: concept map, mental-model shift, side-by-side code | 📖 read this |
 
 **Start with the [guide](guide/solidity-to-daml.md).** Then read the two contracts
@@ -40,9 +41,13 @@ to keep bidders honest - confidentiality lasts only until reveal, then every bid
 public forever. In Daml, a `Bid` contract names just two stakeholders (the
 auctioneer and that bidder), so no other party's ledger ever contains it. Privacy
 is a property of the ledger rather than a workaround, and the losing bids are never
-disclosed at all. The Daml test proves this on a live ledger: each bidder sees one
-bid, the auctioneer sees all of them, and settlement pays the winner's funds to the
-seller while refunding losers in a single atomic transaction.
+disclosed at all. Funds are held as the Canton Network Token Standard's `Holding`
+and settled through its `Allocation` interface, so the winner pays the seller and
+losers are refunded in one atomic delivery-versus-payment; one bid per bidder is
+enforced on-ledger by a single-use right, not an application check. The Daml tests
+prove the privacy claim by content (each bidder sees exactly their own bid, the
+auctioneer sees all) and run unchanged on the in-memory ledger and on a real Canton
+participant node.
 
 ## Run it
 
@@ -54,9 +59,27 @@ manager (needs a Java 17+ runtime).
 # EVM reference - 12 Foundry tests (Solidity 0.8.35)
 cd solidity && forge test -vv
 
-# Canton/Daml version - 5 Daml Script tests, including the privacy proof (Daml 3.4)
+# Canton/Daml version - 7 Daml Script tests, including the privacy proof (Daml 3.4)
 cd daml && dpm test
 ```
+
+### On a real Canton node
+
+The same templates run unchanged on a real participant, not just the in-memory
+test ledger. `dpm sandbox` boots a full Canton node in one process, no Docker:
+
+```bash
+cd daml && dpm build
+# boot Canton with the auction package loaded (gRPC ledger API on 6865)
+dpm sandbox --dar .daml/dist/confidential-auction-1.0.0.dar
+# in another shell: run the privacy + DvP proof against the live ledger
+dpm script --dar .daml/dist/confidential-auction-1.0.0.dar \
+  --script-name Test:privacyAndSettlement --ledger-host localhost --ledger-port 6865
+```
+
+On the Canton Network's DevNet you would swap the bundled registry for the Amulet
+(Canton Coin) registry; the auction code is unchanged, because it targets the
+token-standard interfaces rather than our templates.
 
 ## Why this comparison matters for Canton
 
