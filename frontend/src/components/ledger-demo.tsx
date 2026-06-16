@@ -166,7 +166,7 @@ export function LedgerDemo() {
             return (
               <div
                 key={p}
-                className="flex items-center gap-2 rounded-md border border-line bg-bg-sunken/60 px-3 py-2.5"
+                className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-bg-sunken/60 px-3 py-2.5"
               >
                 <span className="grid size-7 place-items-center rounded-sm bg-secondary font-mono text-[0.65rem] text-vault">
                   {PARTY_META[p].tag}
@@ -187,7 +187,7 @@ export function LedgerDemo() {
                   size="sm"
                   variant={desk.variant}
                   disabled={desk.disabled}
-                  className="ml-auto h-8 min-w-[5.5rem] font-mono text-[0.7rem] uppercase tracking-wide"
+                  className="ml-auto h-8 min-w-18 font-mono text-[0.7rem] uppercase tracking-wide"
                   onClick={desk.onClick}
                 >
                   {desk.label}

@@ -36,7 +36,7 @@ export function ConceptMap() {
       </h2>
 
       <div className="mt-10 overflow-hidden rounded-md border border-line">
-        <div className="grid grid-cols-[1.1fr_1fr_1fr] bg-secondary/50 px-4 py-2.5 font-mono text-[0.65rem] uppercase tracking-wider text-muted-foreground">
+        <div className="grid grid-cols-2 sm:grid-cols-[1.1fr_1fr_1fr] bg-secondary/50 px-4 py-2.5 font-mono text-[0.65rem] uppercase tracking-wider text-muted-foreground">
           <span>Solidity / EVM</span>
           <span>Daml / Canton</span>
           <span className="hidden sm:block">why it shrinks</span>
@@ -46,7 +46,7 @@ export function ConceptMap() {
           return (
             <div
               key={sol}
-              className="grid grid-cols-[1.1fr_1fr_1fr] items-center gap-2 px-4 py-3 font-mono text-xs sm:text-sm"
+              className="grid grid-cols-2 sm:grid-cols-[1.1fr_1fr_1fr] items-center gap-2 px-4 py-3 font-mono text-xs sm:text-sm"
               style={{
                 borderTop: i === 0 ? "none" : "1px solid var(--line)",
                 background: i % 2 ? "transparent" : "rgba(255,255,255,0.012)",

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -6,6 +6,11 @@ export const metadata: Metadata = {
   title: "The bid no one else can see · solidity to daml on canton",
   description:
     "The same sealed-bid auction, built twice: EVM commit/reveal vs. Canton's native privacy. Place a bid and watch what each party is, and isn't, allowed to see.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
