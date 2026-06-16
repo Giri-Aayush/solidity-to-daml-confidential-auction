@@ -82,6 +82,28 @@ dpm script --dar .daml/dist/confidential-auction-1.0.0.dar \
   --script-name Test:privacyAndSettlement --ledger-host localhost --ledger-port 6865
 ```
 
+### Discovery with PQS
+
+In production the auctioneer does not keep the bid `ContractId`s in memory; it
+discovers them by querying the Participant Query Store, a PostgreSQL projection of
+the ledger. `dpm pqs` runs the exporter against the same node:
+
+```bash
+dpm pqs pipeline ledger postgres-document \
+  --source-ledger-host localhost --source-ledger-port 6865 --source-ledger-auth NoAuth \
+  --target-postgres-host localhost --target-postgres-database pqs_auction \
+  --target-postgres-username "$USER" --target-postgres-password "<password>" \
+  --pipeline-ledger-start Genesis
+```
+
+The bids are then a SQL query away (each party sees only what it is a stakeholder of):
+
+```sql
+SELECT payload->>'bidder' AS bidder, payload->>'amount' AS amount
+FROM __contracts c JOIN __contract_tpe t ON c.tpe_pk = t.pk
+WHERE t.entity_name = 'Bid';
+```
+
 ## Setup notes
 
 - Built and tested against **Daml 3.4.11** with **DPM** (the Daml package manager).
@@ -109,3 +131,7 @@ dpm script --dar .daml/dist/confidential-auction-1.0.0.dar \
   [PQS](https://docs.digitalasset.com/build/3.4/component-howtos/pqs/index.html)
   (`dpm pqs`, a PostgreSQL view of the ledger), since Canton 3.x has no key lookups.
 - *Identity:* `auctionId` is a plain `Text`; production uses a guaranteed-unique id.
+- *Divulgence:* a non-stakeholder never receives a `Bid`, so it cannot see one. A
+  party can learn a contract by *witnessing* a transaction that uses it, but no
+  bidder witnesses another's bid here; explicit disclosure (the `explicitDisclosure`
+  script) is the controlled way to hand a contract to a non-stakeholder.
