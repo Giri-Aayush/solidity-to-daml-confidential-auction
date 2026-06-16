@@ -5,7 +5,7 @@ const REPO = "https://github.com/Giri-Aayush/solidity-to-daml-confidential-aucti
 const GUIDE = `${REPO}/blob/main/guide/solidity-to-daml.md`;
 
 const STATS = [
-  ["1 auction", "two implementations"],
+  ["4 → 2", "steps to run it, after one-time setup"],
   ["1 tx", "token-standard dvp settlement"],
   ["12 + 7", "foundry + daml tests, green"],
   ["0", "lines of privacy plumbing in daml"],
