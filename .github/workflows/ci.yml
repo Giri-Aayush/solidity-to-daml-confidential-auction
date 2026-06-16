@@ -38,7 +38,7 @@ jobs:
 
       - name: Install DPM and the Daml SDK
         run: |
-          curl -sSL https://get.digitalasset.com/install/install.sh | sh
+          curl -fsSL https://get.digitalasset.com/install/install.sh | sh
           echo "$HOME/.dpm/bin" >> "$GITHUB_PATH"
 
       - name: Install Daml 3.4.11

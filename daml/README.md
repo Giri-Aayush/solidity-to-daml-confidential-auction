@@ -107,7 +107,7 @@ WHERE t.entity_name = 'Bid';
 ## Setup notes
 
 - Built and tested against **Daml 3.4.11** with **DPM** (the Daml package manager).
-  Install via `curl -sSL https://get.digitalasset.com/install/install.sh | sh`, then
+  Install via `curl -fsSL https://get.digitalasset.com/install/install.sh | sh`, then
   `dpm install 3.4.11`; needs a **Java 17+** runtime on `PATH`.
 - The token-standard interface DARs (`splice-api-token-{metadata,holding,allocation}-v1`,
   the prebuilt `1.0.0` releases from

@@ -12,7 +12,7 @@ require forge "Install Foundry: https://book.getfoundry.sh/getting-started/insta
 
 echo
 echo "==> Daml (DPM) - 7 scripts"
-require dpm "Install DPM: curl -sSL https://get.digitalasset.com/install/install.sh | sh && dpm install 3.4.11"
+require dpm "Install DPM: curl -fsSL https://get.digitalasset.com/install/install.sh | sh && dpm install 3.4.11"
 require java "Install a Java 17+ runtime (for example Temurin 17)."
 ( cd daml && dpm build && dpm test )
 
