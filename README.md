@@ -1,11 +1,19 @@
 # From Solidity to Daml: A Confidential Auction on Canton
 
-[![CI](https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction/actions/workflows/ci.yml/badge.svg)](https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction/actions/workflows/ci.yml) [![live demo](https://img.shields.io/badge/live%20demo-canton--confidential.netlify.app-a78bfa?style=flat-square&logo=netlify&logoColor=white)](https://canton-confidential.netlify.app/) &nbsp;![daml](https://img.shields.io/badge/daml-3.4-7c3aed?style=flat-square) ![solidity](https://img.shields.io/badge/solidity-0.8.35-363636?style=flat-square)
+[![CI](https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction/actions/workflows/ci.yml/badge.svg)](https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction/actions/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-12_Foundry_%2B_7_Daml-2ea043?style=flat-square)](#run-it)
+[![live demo](https://img.shields.io/badge/live_demo-canton--confidential.netlify.app-a78bfa?style=flat-square&logo=netlify&logoColor=white)](https://canton-confidential.netlify.app/)
+[![license](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](#license)
+
+![Daml](https://img.shields.io/badge/Daml-3.4-7c3aed?style=flat-square)
+![Solidity](https://img.shields.io/badge/Solidity-0.8.35-363636?style=flat-square&logo=solidity)
+![Canton](https://img.shields.io/badge/Canton-CIP--0056_token_standard-8b5cf6?style=flat-square)
+![Next.js](https://img.shields.io/badge/Next.js-explainer_site-000000?style=flat-square&logo=nextdotjs)
 
 **[▶ Open the live demo](https://canton-confidential.netlify.app/)** to place a sealed bid and watch the privacy hold, no clone required.
 
-**The same sealed-bid auction, built twice** - once in Solidity for the EVM, once
-in Daml for Canton - to show Ethereum developers what changes when the ledger
+**The same sealed-bid auction, built twice**: once in Solidity for the EVM, once
+in Daml for Canton, to show Ethereum developers what changes when the ledger
 itself can keep a secret.
 
 Sealed-bid auctions are the sharpest possible lens on this: confidentiality is
@@ -19,7 +27,7 @@ similar length but spend their lines very differently.)
 
 > Built as a developer-education artifact for OpenZeppelin's Canton stack: a
 > worked translation of a familiar EVM pattern into Canton's Daml-based,
-> privacy-preserving model - a Confidential Auction reference implementation plus
+> privacy-preserving model: a Confidential Auction reference implementation plus
 > the guide that teaches it.
 
 ## What's here
@@ -37,7 +45,7 @@ side by side with the concept-map table open.
 
 In Solidity, all state is public, so a "confidential" auction commits to a
 `keccak256` hash of each bid, opens a reveal window, and uses a forfeitable deposit
-to keep bidders honest - confidentiality lasts only until reveal, then every bid is
+to keep bidders honest; confidentiality lasts only until reveal, then every bid is
 public forever. In Daml, a `Bid` contract names just two stakeholders (the
 auctioneer and that bidder), so no other party's ledger ever contains it. Privacy
 is a property of the ledger rather than a workaround, and the losing bids are never
@@ -90,13 +98,16 @@ dpm script --dar .daml/dist/confidential-auction-1.0.0.dar \
 ```
 
 On the Canton Network's DevNet you would swap the bundled registry for the Amulet
-(Canton Coin) registry; the auction code is unchanged, because it targets the
-token-standard interfaces rather than our templates.
+(Canton Coin) registry. The settlement orchestration is registry-agnostic (it
+exercises the token-standard `Allocation` choices rather than our templates), but the
+glue that mints the backing holding and forwards the proceeds to the seller is written
+against the bundled coin, so on a real network that part moves to the registry's own
+factory/transfer flow.
 
 ## Why this comparison matters for Canton
 
 Canton's adoption is institution-led, and the developers it's courting are largely
-Ethereum-native. The hardest part of that transition isn't syntax - it's the
+Ethereum-native. The hardest part of that transition isn't syntax; it's the
 mental flip from "one global, public computer" to "a network of parties with
 per-party, private state." A sealed-bid auction is the smallest complete example
 that forces that flip, which is why it's the one worth teaching first.

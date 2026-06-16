@@ -11,12 +11,17 @@
 --
 -- This version settles against the real Canton Network Token Standard
 -- (CIP-0056): bids lock funds held as the standard `Holding` interface, and
--- settlement is an atomic delivery-versus-payment built on the standard
+-- settlement is an atomic delivery-versus-payment driven through the standard
 -- `Allocation` interface. We ship a minimal registry (`AuctionCoin` /
 -- `CoinAllocation`) that *implements* those interfaces so the sample is
 -- self-contained; on a real network you swap it for the Amulet (Canton Coin)
--- registry and the auction code is unchanged, because it is written against the
--- interfaces, not our templates.
+-- registry. The settlement *orchestration* is registry-agnostic (it exercises
+-- the standard `Allocation_ExecuteTransfer` / `Allocation_Cancel` choices, not
+-- our templates), but two glue steps are registry-specific and would move to the
+-- registry's own factory/transfer flow on a real network: minting the backing
+-- holding and allocation in `PlaceBid`, and re-minting the executed proceeds to
+-- the beneficiary in `AwardToBeneficiary` (both build the concrete `AuctionCoin`,
+-- which only works here because the auctioneer is also the issuer).
 --
 -- Privacy of the money leg: every bid is allocated to the auctioneer (the
 -- settlement executor), never to the beneficiary, so the seller never learns a
@@ -24,10 +29,11 @@
 -- forwarded to the beneficiary; losing allocations are cancelled (refunded), all
 -- in one transaction.
 --
--- Targets Daml 3.x / Daml-LF 2.1. Canton 3.x does not support contract keys (and
--- unique keys are not planned for it), so one-bid-per-bidder is enforced on-ledger
--- with a single-use `BidRight` rather than a key, and the auctioneer discovers bid
--- `ContractId`s off-ledger (via PQS) and passes them to `Settle`.
+-- Targets Daml 3.x / Daml-LF 2.1. Canton has no *unique* contract keys, and they are
+-- not planned (Canton 3.5 added non-unique keys, but those can't enforce a uniqueness
+-- constraint), so one-bid-per-bidder is enforced on-ledger with a single-use
+-- `BidRight` rather than a key, and the auctioneer discovers bid `ContractId`s
+-- off-ledger (via PQS) and passes them to `Settle`.
 module ConfidentialAuction where
 
 import DA.List (sortOn)
@@ -61,6 +67,11 @@ releaseToSender registry spec backing = do
 -- | A fungible holding that implements the CIP-0056 `Holding` interface. For a
 -- self-contained sample the registry (issuer) is the auctioneer and the sole
 -- signatory; a production registry such as Canton Coin issues these instead.
+-- TRUST CAVEAT: because the auctioneer is the sole signatory of every coin, it can
+-- mint, burn, and move them unilaterally. In this sample the auctioneer is therefore
+-- issuer + executor + settlement authority all at once, so every privacy and DvP
+-- guarantee rests on that one party. This is a teaching stub; do not lift it into
+-- production; use a real registry where issuance and settlement authority are split.
 template AuctionCoin
   with
     registry : Party
@@ -131,7 +142,7 @@ template CoinAllocation
 -- right is good for exactly one bid. One bid *per bidder* then holds as long as
 -- the auctioneer issues exactly one right per bidder: `IssueBidRight` does not
 -- enforce that on-ledger (and without contract keys, which Canton 3.x lacks, it
--- cannot cheaply), so the per-bidder property rests on the auctioneer here - a
+-- cannot cheaply), so the per-bidder property rests on the auctioneer here; a
 -- unique contract key would have enforced it against the auctioneer too.
 template BidRight
   with
@@ -217,6 +228,14 @@ template Auction
         backing <- create AuctionCoin with
           registry = auctioneer, owner = bidder, amount, locked = True
         now <- getTime
+        -- The standard's `allocateBefore` / `settleBefore` are deadlines a conforming
+        -- registry SHOULD enforce (allocate before the first, execute before the
+        -- second, exclusive). Our bundled `CoinAllocation` ignores them and the
+        -- auction gates settlement on `now <= settleBy` instead. Note that boundary
+        -- mismatch: `Settle` allows `now == settleBy` (inclusive) while `settleBefore`
+        -- is exclusive, so porting to a real registry means picking `settleBefore`
+        -- strictly after the last moment `Settle` may run, and `allocateBefore`
+        -- earlier still. Kept equal here only to keep the sample short.
         let spec = AllocationSpecification with
               settlement = SettlementInfo with
                 executor = auctioneer
@@ -247,6 +266,16 @@ template Auction
     -- transaction the winning allocation pays the beneficiary, every losing
     -- allocation is cancelled (refunded), and the result is recorded: either all
     -- of that happens or none of it does.
+    --
+    -- LIVENESS CAVEAT: refunds depend on the auctioneer, on it including every bid
+    -- in `bidCids` and on it running `Settle` before `settleBy`. A bid the auctioneer
+    -- omits, or an auctioneer that never settles before the deadline, leaves those
+    -- funds locked, because past `settleBy` this choice can no longer run. The
+    -- bidder's only recourse is to exercise `Allocation_Withdraw` directly (it is
+    -- sender-controlled), which this sample neither exposes nor tests, and doing so
+    -- would make a later `Settle` that still lists that bid `abort`. A production
+    -- design adds a deadline-gated reclaim path so no bidder depends on the
+    -- auctioneer's good behaviour to get their funds back.
     choice Settle : ContractId AuctionResult
       with
         bidCids : [ContractId Bid]
@@ -307,6 +336,12 @@ template Bid
     choice AwardToBeneficiary : ()
       controller auctioneer
       do
+        -- Executing the allocation is interface-level (registry-agnostic). The
+        -- forward to the beneficiary below is NOT: it downcasts the proceeds to
+        -- the concrete `AuctionCoin` and re-mints, which only works because the
+        -- auctioneer is this sample's issuer. Against a real registry (Amulet)
+        -- the proceeds would be forwarded via the registry's own transfer flow,
+        -- not archived and re-created here.
         res <- exercise allocation Allocation_ExecuteTransfer with extraArgs = noExtraArgs
         _ <- forA res.receiverHoldingCids \hc -> do
           let coinCid = fromInterfaceContractId @AuctionCoin hc
