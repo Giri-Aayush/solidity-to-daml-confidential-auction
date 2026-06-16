@@ -1,3 +1,6 @@
+# Pinned to the latest 3.4 patch. Canton 3.5 is the newer line (and retires the
+# legacy `daml` assistant in favour of DPM); the auction has no 3.5-specific needs,
+# so it stays on 3.4 for a reproducible build. Bump and re-run `dpm test` to move it.
 sdk-version: 3.4.11
 name: confidential-auction
 source: daml
