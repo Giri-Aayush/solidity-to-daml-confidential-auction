@@ -224,3 +224,40 @@ settlementRespectsDeadline = script do
 
   passTime (hours 2) -- advance past settleBy
   auctioneer `submitMustFail` exerciseCmd closedCid Settle with bidCids = [aliceBid]
+
+-- | Explicit disclosure: a party who is not a stakeholder can still use a
+-- contract as a command input if it is disclosed to them. Here a prospective
+-- bidder reads the auction terms without being an observer.
+explicitDisclosure : Script ()
+explicitDisclosure = script do
+  auctioneer <- allocateParty "Auctioneer"
+  seller <- allocateParty "Seller"
+  alice <- allocateParty "Alice"
+  dave <- allocateParty "Dave" -- a prospective bidder, not invited, not an observer
+  now <- getTime
+
+  auctionCid <- submit auctioneer do
+    createCmd Auction with
+      auctioneer
+      auctionId = "PAINTING-2026"
+      item = "Rare painting"
+      beneficiary = seller
+      invited = [alice]
+      settleBy = addRelTime now (hours 24)
+      biddingOpen = True
+
+  -- Dave is not a stakeholder, so the auction is not on his ledger at all.
+  daveSees <- query @Auction dave
+  daveSees === []
+  -- Without the contract, Dave cannot reference it in a command.
+  dave `submitMustFail` exerciseCmd auctionCid FetchTerms with viewer = dave
+
+  -- The auctioneer discloses the auction; now Dave can read its terms using the
+  -- disclosed contract, still without being added to `invited`.
+  Some disclosed <- queryDisclosure auctioneer auctionCid
+  (item, _) <- submit (actAs dave <> disclose disclosed) do
+    exerciseCmd auctionCid FetchTerms with viewer = dave
+  item === "Rare painting"
+
+  stillHidden <- query @Auction dave
+  stillHidden === []

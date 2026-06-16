@@ -164,6 +164,16 @@ template Auction
         assertMsg "rights can only be issued to invited bidders" (bidder `elem` invited)
         create BidRight with auctioneer, auctionId, bidder
 
+    -- | Read-only: the public terms of the auction (item and deadline). A
+    -- prospective bidder who is not yet an observer can call this if the
+    -- auctioneer hands them the contract via explicit disclosure (disclosed
+    -- contracts), without being added to the ledger's copy of `invited`.
+    nonconsuming choice FetchTerms : (Text, Time)
+      with
+        viewer : Party
+      controller viewer
+      do pure (item, settleBy)
+
     -- | A bidder places a sealed bid: it consumes their one-time `BidRight`,
     -- locks the bid amount from one of their holdings as a token-standard
     -- `Allocation` (sender = bidder, receiver = the auctioneer/executor), and
