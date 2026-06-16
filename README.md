@@ -1,6 +1,14 @@
 # From Solidity to Daml: A Confidential Auction on Canton
 
-[![CI](https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction/actions/workflows/ci.yml/badge.svg)](https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction/actions/workflows/ci.yml) [![live demo](https://img.shields.io/badge/live%20demo-canton--confidential.netlify.app-a78bfa?style=flat-square&logo=netlify&logoColor=white)](https://canton-confidential.netlify.app/) &nbsp;![daml](https://img.shields.io/badge/daml-3.4-7c3aed?style=flat-square) ![solidity](https://img.shields.io/badge/solidity-0.8.35-363636?style=flat-square)
+[![CI](https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction/actions/workflows/ci.yml/badge.svg)](https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction/actions/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-12_Foundry_%2B_7_Daml-2ea043?style=flat-square)](#run-it)
+[![live demo](https://img.shields.io/badge/live_demo-canton--confidential.netlify.app-a78bfa?style=flat-square&logo=netlify&logoColor=white)](https://canton-confidential.netlify.app/)
+[![license](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](#license)
+
+![Daml](https://img.shields.io/badge/Daml-3.4-7c3aed?style=flat-square)
+![Solidity](https://img.shields.io/badge/Solidity-0.8.35-363636?style=flat-square&logo=solidity)
+![Canton](https://img.shields.io/badge/Canton-CIP--0056_token_standard-8b5cf6?style=flat-square)
+![Next.js](https://img.shields.io/badge/Next.js-explainer_site-000000?style=flat-square&logo=nextdotjs)
 
 **[▶ Open the live demo](https://canton-confidential.netlify.app/)** to place a sealed bid and watch the privacy hold, no clone required.
 
