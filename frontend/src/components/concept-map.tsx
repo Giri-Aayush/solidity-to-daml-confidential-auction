@@ -5,8 +5,8 @@ const ROWS: [string, string, string][] = [
   ["require(msg.sender == owner)", "controller / signatory", "authz is part of the type"],
   ["deposit in ether (msg.value)", "CIP-0056 Holding", "value is a standard token"],
   ["mutate storage", "archive + re-create", "contracts are immutable"],
-  ["keccak256 commit + reveal", "- nothing -", "privacy is native"],
-  ["forfeiture (reveal-or-lose)", "- nothing -", "losers refunded atomically"],
+  ["keccak256 commit + reveal", "nothing", "privacy is native"],
+  ["forfeiture (reveal-or-lose)", "nothing", "losers refunded atomically"],
   ["pendingReturns / withdraw", "one token-standard DvP", "no pull-payment, no reentrancy"],
   ["event / emit", "stakeholders see the tx", "no separate event log"],
 ];
@@ -22,7 +22,7 @@ const VANISHED = [
   },
   {
     title: "The pull-payment dance",
-    body: "Settlement is one atomic transaction - the winner pays the seller and losers are refunded together - so there's no escrow-then-withdraw step and no reentrancy surface.",
+    body: "Settlement is one atomic transaction. The winner pays the seller and losers are refunded together, so there's no escrow-then-withdraw step and no reentrancy surface.",
   },
 ];
 
@@ -31,7 +31,7 @@ export function ConceptMap() {
     <section className="mx-auto w-full max-w-6xl px-5 py-24">
       <p className="eyebrow mb-4">The translation</p>
       <h2 className="max-w-2xl font-display text-3xl leading-tight sm:text-4xl">
-        Everything you&apos;d reach for in Solidity -{" "}
+        Everything you&apos;d reach for in Solidity,{" "}
         <span className="text-muted-foreground">and what it becomes.</span>
       </h2>
 

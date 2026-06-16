@@ -1,4 +1,4 @@
-# Confidential Auction on Canton - one-command entry points.
+# Confidential Auction on Canton: one-command entry points.
 # Run `make` (or `make help`) to see what is available.
 
 .DEFAULT_GOAL := help

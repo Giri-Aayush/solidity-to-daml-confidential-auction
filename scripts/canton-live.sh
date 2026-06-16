@@ -27,8 +27,8 @@ SANDBOX_PID=$!
 
 cleanup() {
   echo "==> stopping Canton"
-  # Stop only the sandbox we launched - the dpm launcher and the Canton JVM it
-  # spawned - never some other process that merely happens to hold the port.
+  # Stop only the sandbox we launched (the dpm launcher and the Canton JVM it
+  # spawned), never some other process that merely happens to hold the port.
   if [ -n "${SANDBOX_PID:-}" ]; then
     pkill -P "$SANDBOX_PID" 2>/dev/null || true
     kill "$SANDBOX_PID" 2>/dev/null || true

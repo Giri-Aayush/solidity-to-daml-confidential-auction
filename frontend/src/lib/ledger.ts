@@ -1,7 +1,7 @@
 // A tiny in-memory ledger that mirrors the Daml templates in ../../../daml.
 //
 // The point of this file is fidelity: visibility here is decided the *same way*
-// Daml decides it - by who the stakeholders of a contract are - not by any
+// Daml decides it, by who the stakeholders of a contract are, not by any
 // ad-hoc UI flag. `visibleBid` is the whole privacy model in one function.
 
 export type Party = "Alice" | "Bob" | "Carol" | "Auctioneer";
@@ -47,7 +47,7 @@ export type Visibility =
 /**
  * What `viewer` can see of `bid`.
  *  - Canton: a Bid is shared only with its stakeholders (auctioneer + bidder).
- *  - EVM: every bid is on a public chain - a hash until reveal, then the value,
+ *  - EVM: every bid is on a public chain, a hash until reveal, then the value,
  *    forever, to everyone.
  */
 export function visibleBid(bid: Bid, viewer: Party, mode: Mode): Visibility {
@@ -84,7 +84,7 @@ export function visibleCount(bids: Bid[], viewer: Party, mode: Mode): number {
 }
 
 /**
- * Illustrative commitment shown in EVM commit phase - two FNV-1a words → 16 hex.
+ * Illustrative commitment shown in EVM commit phase: two FNV-1a words → 16 hex.
  * This is deliberately NOT cryptographic: it only needs to look like an opaque,
  * public commitment so the demo can show "everyone sees a hash, no one sees the
  * value yet." The real Solidity contract uses
