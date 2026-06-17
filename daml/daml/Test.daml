@@ -106,8 +106,10 @@ privacyAndSettlement = script do
 
   pure ()
 
--- | One bid per bidder is enforced on-ledger: the single-use `BidRight` is
--- consumed by the first bid, so a second bid has no right left to spend.
+-- | One bid per *right* is enforced on-ledger: the single-use `BidRight` is
+-- consumed by the first bid, so a second bid has no right left to spend. And one
+-- bid per *bidder* is enforced at settlement: even if the auctioneer mints a
+-- second right for the same party, `Settle` refuses to count both bids (A8).
 oneBidPerBidder : Script ()
 oneBidPerBidder = script do
   auctioneer <- allocateParty "Auctioneer"
@@ -129,9 +131,17 @@ oneBidPerBidder = script do
 
   aliceRight <- invite auctioneer auctionCid alice
   -- First bid consumes the right.
-  _ <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 20.0, funds = firstFunds, right = aliceRight
-  -- Second bid reusing the now-spent right is rejected by the ledger.
+  firstBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 20.0, funds = firstFunds, right = aliceRight
+  -- Reusing the now-spent right is rejected by the ledger (one bid per right).
   alice `submitMustFail` exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 25.0, funds = secondFunds, right = aliceRight
+
+  -- The auctioneer CAN mint a second right for the same bidder (IssueBidRight does
+  -- not prevent it), so Alice places a second, distinct bid.
+  aliceRight2 <- invite auctioneer auctionCid alice
+  secondBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 25.0, funds = secondFunds, right = aliceRight2
+  -- But settlement refuses to count two bids from one bidder.
+  closedCid <- submit auctioneer do exerciseCmd auctionCid CloseBidding
+  auctioneer `submitMustFail` exerciseCmd closedCid Settle with bidCids = [firstBid, secondBid]
 
 -- | A party who was not invited cannot get a right, nor bid with someone else's.
 nonInvitedCannotBid : Script ()
