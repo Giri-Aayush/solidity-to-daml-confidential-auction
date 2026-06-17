@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, Landmark, RotateCcw } from "lucide-react";
+import { ArrowUpRight, Flame, Landmark, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -328,7 +328,7 @@ function PartyPanel({
         <>
           <hr className="rule my-3" />
           <ResultRow result={result} viewer={viewer} mode={mode} />
-          <SettlementRow result={result} viewer={viewer} bids={bids} />
+          <SettlementRow result={result} viewer={viewer} bids={bids} mode={mode} />
         </>
       )}
     </section>
@@ -426,10 +426,12 @@ function SettlementRow({
   result,
   viewer,
   bids,
+  mode,
 }: {
   result: AuctionResult;
   viewer: Party;
   bids: Bid[];
+  mode: Mode;
 }) {
   const myBid = bids.find((b) => b.bidder === viewer);
   let text: string | null = null;
@@ -443,6 +445,13 @@ function SettlementRow({
     text = `paid ${result.amount} ${UNIT}`;
     Icon = ArrowUpRight;
     cls = "text-vault";
+  } else if (mode === "evm" && myBid && !myBid.revealed) {
+    // EVM: a bid committed but never revealed forfeits its deposit; the contract
+    // has no refund path for it. (Canton has no reveal step, so losers are simply
+    // refunded; never show "refunded" for an unrevealed EVM bid.)
+    text = `${myBid.amount} ${UNIT} forfeited`;
+    Icon = Flame;
+    cls = "text-signal";
   } else if (myBid) {
     text = `${myBid.amount} ${UNIT} refunded`;
   }
