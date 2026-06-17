@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { FileCode } from "lucide-react";
 
 const SOL_GUTTER = Array.from({ length: 18 }, (_, i) => i + 1).join("\n");
@@ -38,6 +39,31 @@ const DAML_CODE = `<span class="t-c">-- a single sealed bid, co-signed by the au
     <span class="t-k">signatory</span> auctioneer, bidder
     <span class="t-k">ensure</span> amount <span class="t-p">&gt;</span> <span class="t-n">0.0</span>
     <span class="t-c">-- the signatory set is the entire privacy model</span>`;
+
+// The snippets above use a small, fixed vocabulary of <span class="t-*"> tokens
+// for highlighting. Parse them into real elements instead of injecting raw HTML,
+// so there is no dangerouslySetInnerHTML even though the input is static.
+const ENTITIES: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;": ">" };
+const decode = (s: string) => s.replace(/&amp;|&lt;|&gt;/g, (m) => ENTITIES[m]);
+
+function highlight(src: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  const re = /<span class="(t-[a-z]+)">([\s\S]*?)<\/span>/g;
+  let last = 0;
+  let key = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src)) !== null) {
+    if (m.index > last) out.push(decode(src.slice(last, m.index)));
+    out.push(
+      <span key={key++} className={m[1]}>
+        {decode(m[2])}
+      </span>,
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < src.length) out.push(decode(src.slice(last)));
+  return out;
+}
 
 function Dots() {
   return (
@@ -80,7 +106,7 @@ export function CodeContrast() {
           <div className="vsc-body">
             <pre className="gutter" aria-hidden="true">{SOL_GUTTER}</pre>
             <pre className="code">
-              <code dangerouslySetInnerHTML={{ __html: SOL_CODE }} />
+              <code>{highlight(SOL_CODE)}</code>
             </pre>
           </div>
           <div className="vsc-status">
@@ -103,7 +129,7 @@ export function CodeContrast() {
           <div className="vsc-body">
             <pre className="gutter" aria-hidden="true">{DAML_GUTTER}</pre>
             <pre className="code">
-              <code dangerouslySetInnerHTML={{ __html: DAML_CODE }} />
+              <code>{highlight(DAML_CODE)}</code>
             </pre>
           </div>
           <div className="vsc-status">
