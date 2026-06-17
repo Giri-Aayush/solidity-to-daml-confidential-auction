@@ -22,13 +22,13 @@ contract SealedBidAuctionTest is Test {
         vm.deal(carol, 100 ether);
     }
 
-    function _commitment(uint256 value, bytes32 secret) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(value, secret));
+    function _commitment(address who, uint256 value, bytes32 secret) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(value, secret, who));
     }
 
     function _commit(address who, uint256 value, bytes32 secret, uint256 deposit) internal {
         vm.prank(who);
-        auction.commit{value: deposit}(_commitment(value, secret));
+        auction.commit{value: deposit}(_commitment(who, value, secret));
     }
 
     /// Full happy path: three sealed bids, highest valid bid wins, beneficiary is
@@ -145,7 +145,7 @@ contract SealedBidAuctionTest is Test {
         vm.warp(block.timestamp + BIDDING_TIME);
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(SealedBidAuction.TooLate.selector, auction.biddingEnd()));
-        auction.commit{value: 1 ether}(_commitment(1 ether, keccak256("s")));
+        auction.commit{value: 1 ether}(_commitment(alice, 1 ether, keccak256("s")));
     }
 
     /// Revealing before the commit phase closes is rejected by the timeline.
@@ -249,9 +249,9 @@ contract SealedBidAuctionTest is Test {
         // NB: build the commitment with the pure helper, not a.hashBid(), so the
         // external hashBid call doesn't consume the vm.prank before commit().
         vm.prank(alice);
-        a.commit{value: 3 ether}(_commitment(3 ether, sA));
+        a.commit{value: 3 ether}(_commitment(alice, 3 ether, sA));
         vm.prank(bob);
-        a.commit{value: 5 ether}(_commitment(5 ether, sB));
+        a.commit{value: 5 ether}(_commitment(bob, 5 ether, sB));
 
         vm.warp(block.timestamp + BIDDING_TIME);
         vm.prank(alice);
@@ -269,6 +269,36 @@ contract SealedBidAuctionTest is Test {
         vm.prank(alice);
         a.withdraw();
         assertEq(alice.balance, aliceBefore + 3 ether);
+    }
+
+    /// The commitment is bound to the bidder's address, so a reveal front-running
+    /// attack fails. An attacker copies the victim's public commitment and
+    /// over-deposits; even armed with the victim's (value, secret) from the
+    /// mempool, the attacker's reveal re-hashes with the attacker's own address
+    /// and no longer matches, so the victim keeps the lead at their own price.
+    function test_CommitmentBoundToBidder() public {
+        bytes32 sA = keccak256("alice-secret");
+        bytes32 stolen = _commitment(alice, 2 ether, sA); // alice's commitment, public on-chain
+
+        // The attacker (bob) commits the SAME hash bytes, over-depositing to cover
+        // whatever value the hash hides.
+        vm.prank(bob);
+        auction.commit{value: 10 ether}(stolen);
+        _commit(alice, 2 ether, sA, 2 ether);
+
+        vm.warp(block.timestamp + BIDDING_TIME);
+
+        // Bob front-runs with alice's revealed pre-image (as if seen in the mempool).
+        // It cannot count: keccak256(2 ether, sA, bob) != keccak256(2 ether, sA, alice).
+        vm.prank(bob);
+        auction.reveal(2 ether, sA);
+        assertEq(auction.highestBidder(), address(0), "stolen reveal cannot win");
+
+        // Alice reveals normally and wins at her own price; bob's deposit is refundable.
+        vm.prank(alice);
+        auction.reveal(2 ether, sA);
+        assertEq(auction.highestBidder(), alice, "victim still wins");
+        assertEq(auction.pendingReturns(bob), 10 ether, "attacker's deposit fully refundable");
     }
 }
 
