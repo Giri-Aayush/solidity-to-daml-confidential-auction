@@ -14,7 +14,7 @@ const EVM: Step[] = [
 const CANTON: Step[] = [
   { t: "create the auction", s: "the auctioneer invites bidders; a single settle deadline", tag: "setup", kind: "setup" },
   { t: "place bid", s: "seals the bid and locks the funds as a token-standard holding, in one transaction", tag: "1 tx", kind: "tx" },
-  { t: "settle", s: "atomic delivery-versus-payment: the winner pays the seller and losers are refunded, recorded together", tag: "atomic", kind: "atomic" },
+  { t: "settle", s: "atomic delivery-versus-payment once the auctioneer settles: the winner pays the seller and losers are refunded, recorded together", tag: "atomic", kind: "atomic" },
 ];
 
 function Tag({ kind, label }: { kind: Kind; label: string }) {

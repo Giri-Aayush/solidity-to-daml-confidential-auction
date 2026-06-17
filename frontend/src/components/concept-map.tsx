@@ -18,7 +18,7 @@ const VANISHED = [
   },
   {
     title: "Forfeiture",
-    body: "Losing bidders aren't punished. Their locked funds are returned atomically at settlement, so there's no 'reveal or lose your deposit' threat.",
+    body: "Losing bidders aren't punished. Their locked funds are returned atomically once the auctioneer settles, so there's no 'reveal or lose your deposit' threat.",
   },
   {
     title: "The pull-payment dance",
