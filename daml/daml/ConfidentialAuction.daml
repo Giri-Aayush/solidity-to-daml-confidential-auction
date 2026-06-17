@@ -36,7 +36,7 @@
 -- off-ledger (via PQS) and passes them to `Settle`.
 module ConfidentialAuction where
 
-import DA.List (sortOn)
+import DA.List (sortOn, dedup)
 
 import Splice.Api.Token.HoldingV1
 import Splice.Api.Token.AllocationV1
@@ -111,7 +111,13 @@ template AuctionCoin
         lock =
           if locked
             then Some Lock with
-              holders = [registry]
+              -- A13: name BOTH allocation stakeholders, not the registry alone:
+              -- the registry enforces the lock and the owner is the sender who
+              -- controls Allocation_Withdraw, so lock-aware tooling (wallets, PQS)
+              -- reads the correct unlock set. A production lock would also set
+              -- `expiresAt = Some settleBy`; AuctionCoin does not carry the
+              -- deadline, so it stays None here (a deliberate stub simplification).
+              holders = [registry, owner]
               expiresAt = None
               expiresAfter = None
               context = Some "backing an auction bid allocation"
@@ -236,6 +242,12 @@ template Auction
         assertMsg "funds must be the bidder's own coin" (coin.owner == bidder)
         assertMsg "funds must be issued by this auction's registry" (coin.registry == auctioneer)
         assertMsg "coin does not cover the bid" (coin.amount >= amount)
+        -- A14: a multi-instrument registry must also assert the funding holding's
+        -- instrument matches this auction's (holding.instrumentId == unitId auctioneer),
+        -- or it would accept a wrong-denomination coin and mislabel the leg as "CC".
+        -- AuctionCoin has no instrumentId field (this sample issues a single
+        -- instrument), so the check is structurally absent here; add it once the
+        -- holding carries a real instrument id.
         archive funds
         if coin.amount > amount
           then do
@@ -296,6 +308,14 @@ template Auction
     -- would make a later `Settle` that still lists that bid `abort`. A production
     -- design adds a deadline-gated reclaim path so no bidder depends on the
     -- auctioneer's good behaviour to get their funds back.
+    --
+    -- WINNER-CORRECTNESS CAVEAT: `Settle` trusts `bidCids` to be the COMPLETE set
+    -- of live bids. Nothing on-ledger forces inclusion of every bid, so a malicious
+    -- auctioneer can omit the true high bid and crown a lower one. The checks below
+    -- bound what a *given* set can do (every entry belongs to this auction, at most
+    -- one bid per bidder), but they cannot prove completeness; fully fixing that
+    -- needs an on-ledger bid registry/counter. Until then winner-correctness, not
+    -- just refund liveness, rests on the auctioneer supplying the full set.
     choice Settle : ContractId AuctionResult
       with
         bidCids : [ContractId Bid]
@@ -313,7 +333,18 @@ template Auction
           bid <- fetch cid
           assertMsg "bid does not belong to this auction"
             (bid.auctioneer == auctioneer && bid.auctionId == auctionId && bid.item == item)
+          assertMsg "settled bid must come from an invited bidder"
+            (bid.bidder `elem` invited)
           pure (cid, bid)
+
+        -- A8: the ContractId de-dup above stops one bid being counted twice, but
+        -- the single-use BidRight only bounds bids per *right*, not per bidder
+        -- (IssueBidRight does not stop the auctioneer minting a second right for
+        -- the same party). Enforce one settled bid per bidder here so a stray
+        -- second right cannot corrupt the outcome.
+        let settledBidders = map (\(_, bid) -> bid.bidder) bids
+        assertMsg "at most one bid per bidder may be settled"
+          (length (dedup settledBidders) == length settledBidders)
 
         -- Highest bid wins. `sortOn` is stable, so on a tie the earliest bid in
         -- the (deduplicated, input-ordered) list keeps the lead.
@@ -321,13 +352,17 @@ template Auction
           [] -> abort "cannot settle an auction with no bids"
           ((winCid, winBid) :: losers) -> do
             -- DvP: execute the winner's allocation, refund the losers, atomically.
-            exercise winCid AwardToBeneficiary
+            -- A12: the recorded winningAmount is what AwardToBeneficiary actually
+            -- forwarded (it asserts that equals the bid), not an unchecked copy of
+            -- the bid amount, so AuctionResult cannot certify a payment that did
+            -- not fully occur.
+            paid <- exercise winCid AwardToBeneficiary
             _ <- forA losers \(cid, _) -> exercise cid Refund
             create AuctionResult with
               auctioneer
               item
               winner = winBid.bidder
-              winningAmount = winBid.amount
+              winningAmount = paid
 
 -- | A single sealed bid, co-signed by the auctioneer and the bidder and nobody
 -- else: no other party can fetch it, query it, or learn that it exists. It
@@ -352,8 +387,10 @@ template Bid
     ensure amount > 0.0
 
     -- | Winner: execute the allocation (proceeds reach the auctioneer/executor)
-    -- and forward them to the beneficiary, in one transaction.
-    choice AwardToBeneficiary : ()
+    -- and forward them to the beneficiary, in one transaction. Returns the amount
+    -- actually forwarded so the caller can record an outcome derived from the real
+    -- transfer rather than an assumed one.
+    choice AwardToBeneficiary : Decimal
       controller auctioneer
       do
         -- Executing the allocation is interface-level (registry-agnostic). The
@@ -363,13 +400,24 @@ template Bid
         -- the proceeds would be forwarded via the registry's own transfer flow,
         -- not archived and re-created here.
         res <- exercise allocation Allocation_ExecuteTransfer with extraArgs = noExtraArgs
-        _ <- forA res.receiverHoldingCids \hc -> do
+        -- A11: the bundled registry returns no sender change, but a conforming one
+        -- may. Don't silently drop it: assert it is empty so a future port is
+        -- forced to route `senderHoldingCids` instead of orphaning them.
+        assertMsg "unexpected sender change from execute; a port must forward it"
+          (null res.senderHoldingCids)
+        -- A10/A12: forward every executed receiver holding and total what actually
+        -- moved. Summing the real holdings (rather than assuming exactly one of the
+        -- bid amount) means an empty/short result cannot masquerade as full payment.
+        forwarded <- forA res.receiverHoldingCids \hc -> do
           let coinCid = fromInterfaceContractId @AuctionCoin hc
           c <- fetch coinCid
           archive coinCid
-          create AuctionCoin with
+          _ <- create AuctionCoin with
             registry = auctioneer, owner = beneficiary, amount = c.amount, locked = False
-        pure ()
+          pure c.amount
+        let total = sum forwarded
+        assertMsg "executed proceeds must equal the winning bid amount" (total == amount)
+        pure total
 
     -- | Loser: cancel the allocation, refunding the bidder's locked funds.
     choice Refund : ()
