@@ -41,7 +41,15 @@ printf "==> waiting for the ledger API on :%s " "$PORT"
 ready=false
 for _ in $(seq 1 120); do
   if grep -q "Canton sandbox is ready" "$LOG" 2>/dev/null; then ready=true; break; fi
-  if grep -qiE "ERROR|Exception" "$LOG" 2>/dev/null; then echo; echo "Canton failed to start:"; tail -20 "$LOG"; exit 1; fi
+  # Fail fast on a boot failure. Don't grep the log for "ERROR"/"Exception": that is
+  # wrong both ways. It false-matches benign INFO lines (the package name
+  # DA.Exception.ArithmeticError contains "Exception"), and it misses real failures
+  # that print usage, a stack trace, or "Error: Missing DAR" rather than a structured
+  # log level. The reliable signal is that the sandbox PROCESS has exited, so check
+  # that and surface the log; the timeout below still covers a hung-but-alive boot.
+  if ! kill -0 "$SANDBOX_PID" 2>/dev/null; then
+    echo; echo "Canton exited before it was ready:"; tail -25 "$LOG"; exit 1
+  fi
   printf "."; sleep 2
 done
 if [ "$ready" != true ]; then
