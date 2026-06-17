@@ -57,6 +57,30 @@ prove the privacy claim by content (each bidder sees exactly their own bid, the
 auctioneer sees all) and run unchanged on the in-memory ledger and on a real Canton
 participant node.
 
+## Prerequisites
+
+Three tools. If you already write Solidity you likely have Foundry; **DPM** (the
+Daml package manager) and a **Java 17+** runtime are the Canton-side additions.
+
+```bash
+# 1. Foundry - the Solidity toolchain   (https://getfoundry.sh)
+curl -L https://foundry.paradigm.xyz | bash && foundryup
+
+# 2. Java 17+   (DPM runs on a JVM)
+brew install openjdk@17                   # macOS (Homebrew)
+sudo apt-get install -y openjdk-17-jdk    # Debian / Ubuntu
+
+# 3. DPM + the Daml 3.4 SDK   (https://docs.digitalasset.com/build/3.4/dpm/dpm.html)
+curl -fsSL https://get.digitalasset.com/install/install.sh | sh
+dpm install 3.4.11
+```
+
+Both the Foundry and DPM installers add their `bin` directory to your shell
+profile, so if `foundryup` or `dpm` is reported "not found" immediately after,
+open a new terminal (or `source` your profile) and re-run that line. After that the
+`make` targets locate Foundry, DPM, and Java for you, including the keg-only
+Homebrew JDK on macOS, so you should not need to touch `PATH` to run the project.
+
 ## Run it
 
 ```bash
@@ -68,19 +92,18 @@ make canton   # run the auction on a REAL Canton node: boots a sandbox, runs the
 make web      # open the explainer site locally (Next.js on :3000)
 ```
 
-Prerequisites: [Foundry](https://book.getfoundry.sh/) for the Solidity side, and
-[DPM](https://docs.digitalasset.com/build/3.4/dpm/dpm.html) (`dpm install 3.4.11`)
-plus a Java 17+ runtime for the Canton side. The scripts locate dpm, Java, and
-Foundry for you when they are installed in the usual places, so a fresh clone runs
-with no extra setup. The token-standard DARs are vendored in
-[`daml/dars/`](daml/dars/), so the build is offline.
+The token-standard DARs are vendored in [`daml/dars/`](daml/dars/), so the Daml
+build is fully offline.
 
-<details><summary>Prefer to run the suites directly?</summary>
+<details><summary>Prefer to run the suites directly (without make)?</summary>
 
 ```bash
 cd solidity && forge test -vv   # 12 Foundry tests (Solidity 0.8.35)
 cd daml && dpm test             # 7 Daml Script tests, including the privacy proof
 ```
+
+On macOS, running `dpm` directly (not via `make`) needs the Homebrew JDK on your
+PATH first: `export PATH="$(brew --prefix openjdk@17)/bin:$PATH"`.
 </details>
 
 ### On a real Canton node
