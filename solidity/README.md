@@ -40,10 +40,11 @@ and they are exactly what the Daml version avoids.
 forge test -vv
 ```
 
-Thirteen tests cover the happy path, surplus-deposit refunds, under-collateralized
+Sixteen tests cover the happy path, surplus-deposit refunds, under-collateralized
 / wrong-secret / zero-value reveals, rejected empty commitments, the timeline
 guards, ties, non-revealer forfeiture, double-reveal protection, commitment-to-bidder
-binding (reveal front-run resistance), and a beneficiary that reverts on receive
+binding (reveal front-run resistance), constructor guards (rejecting a zero
+beneficiary and zero-length windows), and a beneficiary that reverts on receive
 (proving auctionEnd can't be bricked).
 
 ## Tooling note

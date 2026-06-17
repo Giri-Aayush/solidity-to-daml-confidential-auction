@@ -75,6 +75,8 @@ contract SealedBidAuction {
     error NothingCommitted();
     error AlreadyRevealed();
     error TransferFailed();
+    error ZeroBeneficiary();
+    error ZeroDuration();
 
     modifier onlyBefore(uint256 t) {
         if (block.timestamp >= t) revert TooLate(t);
@@ -90,6 +92,15 @@ contract SealedBidAuction {
     /// @param revealTime   seconds the reveal phase stays open (after commit)
     /// @param beneficiaryAddress  recipient of the winning funds
     constructor(uint256 biddingTime, uint256 revealTime, address beneficiaryAddress) {
+        // A5: a zero beneficiary would strand the winning bid forever. auctionEnd
+        // credits pendingReturns[address(0)], which no one can withdraw, and
+        // `beneficiary` is immutable, so there is no recovery. Reject it up front.
+        if (beneficiaryAddress == address(0)) revert ZeroBeneficiary();
+        // A6: zero-length windows are degenerate and unrecoverable (immutable). With
+        // biddingTime == 0, commit() is never reachable; with revealTime == 0,
+        // reveal() can satisfy neither onlyAfter(biddingEnd) nor onlyBefore(revealEnd),
+        // so any committed deposit is stranded. Require both to be positive.
+        if (biddingTime == 0 || revealTime == 0) revert ZeroDuration();
         beneficiary = beneficiaryAddress;
         biddingEnd = block.timestamp + biddingTime;
         revealEnd = biddingEnd + revealTime;
@@ -162,6 +173,12 @@ contract SealedBidAuction {
     ///         pull-payment balance (collected via withdraw), never pushed. A
     ///         beneficiary that reverts on receive can no longer brick auctionEnd
     ///         or trap the winning funds.
+    /// @dev    A7: the winning value is locked at reveal and only becomes claimable
+    ///         once this runs, so the auction is not final until someone calls it.
+    ///         It is permissionless (anyone may call after revealEnd), which keeps
+    ///         the dependency off the beneficiary or auctioneer alone, but the call
+    ///         must still happen for the winning funds (and any surplus credited at
+    ///         the same time) to be withdrawable.
     function auctionEnd() external onlyAfter(revealEnd) {
         if (ended) revert AuctionAlreadyEnded();
         ended = true;
