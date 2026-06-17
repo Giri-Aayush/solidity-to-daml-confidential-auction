@@ -4,6 +4,12 @@
 -- bidder sees exactly their own bid and nothing else, and that settlement moves
 -- real funds atomically through the CIP-0056 `Allocation` interface: the winner
 -- pays the beneficiary while losers are refunded, all in one transaction.
+--
+-- Reads like a Foundry test suite, if you know one: each `Script` is a test
+-- function; `submit p cmd` is a transaction sent as party `p` (roughly
+-- `vm.prank(p)` plus the call); `submitMustFail` is `vm.expectRevert`;
+-- `allocateParty` mints a fresh party (an address you control); and `query @T p`
+-- reads exactly what party `p` is allowed to see on the ledger.
 module Test where
 
 import ConfidentialAuction

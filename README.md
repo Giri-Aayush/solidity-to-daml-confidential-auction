@@ -154,27 +154,53 @@ factory/transfer flow.
 
 ## Troubleshooting
 
-First runs on the Canton toolchain trip on a few predictable things:
+First runs on the Canton toolchain trip on a few predictable things. Click the one
+that matches:
 
-- **`Unable to locate a Java Runtime` (or `dpm test` won't start).** macOS ships a
-  `/usr/bin/java` *stub* that exists but errors until a real JDK is installed. Install
-  Java 17 (see [Prerequisites](#prerequisites)). The `make` targets then find it for
-  you; to run `dpm` directly, put it on PATH:
-  `export PATH="$(brew --prefix openjdk@17)/bin:$PATH"`.
-- **`dpm: command not found` (or `forge` / `foundryup`).** The installer added its
-  `bin` to your shell *profile*, not the current session. Open a new terminal, or
-  `source ~/.zshrc` (or `~/.bashrc`), then retry. `dpm` lives in `~/.dpm/bin`.
-- **`SDK_NOT_INSTALLED` or a version error from `dpm`.** Run `dpm install 3.4.11` once
-  to download the SDK the project pins.
-- **`make canton`: "party already exists" or "port 6865 in use".** A Canton sandbox
-  from a previous run is still up. `make canton` boots a fresh node and tears it down
-  on exit; if one got orphaned, free the port with `lsof -ti tcp:6865 | xargs kill`
-  and re-run.
-- **"What's a `.dar`?"** A *Daml Archive* is the compiled package (your templates plus
-  their dependencies) in one file: the rough equivalent of an EVM contract's bytecode
-  and ABI bundled together. `dpm build` produces
-  `daml/.daml/dist/confidential-auction-1.0.0.dar`; the CIP-0056 interface DARs the
-  project builds against are vendored in [`daml/dars/`](daml/dars/).
+<details>
+<summary><strong><code>Unable to locate a Java Runtime</code> (or <code>dpm test</code> won't start)</strong></summary>
+
+macOS ships a `/usr/bin/java` *stub* that exists but errors until a real JDK is
+installed. Install Java 17 (see [Prerequisites](#prerequisites)). The `make` targets
+then find it for you; to run `dpm` directly, put it on PATH:
+`export PATH="$(brew --prefix openjdk@17)/bin:$PATH"`.
+
+</details>
+
+<details>
+<summary><strong><code>dpm: command not found</code> (or <code>forge</code> / <code>foundryup</code>)</strong></summary>
+
+The installer added its `bin` to your shell *profile*, not the current session. Open
+a new terminal, or `source ~/.zshrc` (or `~/.bashrc`), then retry. `dpm` lives in
+`~/.dpm/bin`.
+
+</details>
+
+<details>
+<summary><strong><code>SDK_NOT_INSTALLED</code> or a version error from <code>dpm</code></strong></summary>
+
+Run `dpm install 3.4.11` once to download the SDK the project pins.
+
+</details>
+
+<details>
+<summary><strong><code>make canton</code>: "party already exists" or "port 6865 in use"</strong></summary>
+
+A Canton sandbox from a previous run is still up. `make canton` boots a fresh node and
+tears it down on exit; if one got orphaned, free the port with
+`lsof -ti tcp:6865 | xargs kill` and re-run.
+
+</details>
+
+<details>
+<summary><strong>What's a <code>.dar</code>?</strong></summary>
+
+A *Daml Archive* is the compiled package (your templates plus their dependencies) in
+one file: the rough equivalent of an EVM contract's bytecode and ABI bundled together.
+`dpm build` produces `daml/.daml/dist/confidential-auction-1.0.0.dar`; the CIP-0056
+interface DARs the project builds against are vendored in [`daml/dars/`](daml/dars/).
+
+</details>
 
 ## Why this comparison matters for Canton
 

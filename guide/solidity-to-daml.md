@@ -36,6 +36,36 @@ that is the lesson. Daml has no native currency, so it spends those lines on a t
 and one *atomic* delivery-versus-payment, not on faking privacy and chasing
 pull-payment refunds across transactions.
 
+### The whole auction, at a glance
+
+Six templates, who signs what, and the bid-to-settle flow in one picture. The
+sections below walk through each piece; keep this map handy.
+
+```mermaid
+flowchart TD
+    classDef tmpl fill:#ede9fe,stroke:#7c3aed,color:#2b1b6b;
+    classDef party fill:#ffffff,stroke:#888,color:#222;
+
+    AUC([Auctioneer]):::party
+    BID([Bidder]):::party
+
+    AUC -->|create| AU["Auction<br/>sig: auctioneer | obs: invited"]:::tmpl
+    AU -->|IssueBidRight| BR["BidRight<br/>single-use, one per bidder"]:::tmpl
+
+    BID -->|PlaceBid| PB(["PlaceBid: one transaction"])
+    BR -.->|spent| PB
+    PB --> CO["AuctionCoin (locked)<br/>CIP-0056 Holding"]:::tmpl
+    PB --> BD["Bid<br/>sig: auctioneer + bidder<br/>no one else can see it"]:::tmpl
+    CO --> AL["CoinAllocation<br/>CIP-0056 Allocation = DvP"]:::tmpl
+    BD -.->|carries| AL
+
+    AUC ==>|CloseBidding, then Settle| ST{{"Settle: highest bid wins<br/>one atomic tx"}}
+    AL -.-> ST
+    ST -->|winner: AwardToBeneficiary| SE([Seller paid])
+    ST -->|losers: Refund| RF([Losers refunded])
+    ST --> RS["AuctionResult<br/>obs: winner only"]:::tmpl
+```
+
 ---
 
 ## 2. The mental model shift
