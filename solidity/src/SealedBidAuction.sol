@@ -34,10 +34,11 @@ pragma solidity 0.8.35;
 ///           bidder revealing last can read the standing bids and decide whether to
 ///           reveal at all. Deposits blunt this but cannot remove the informational
 ///           edge. True sealed bidding needs threshold/ZK schemes, not plain hashing.
-///         - Commitment privacy depends on entropy. keccak256(value, secret) is only
-///           as hidden as its inputs: a small bid space with a low-entropy `secret`
-///           can be brute-forced off-chain BEFORE reveal. Bidders must use a
-///           full-entropy 32-byte salt; the contract cannot enforce that on-chain.
+///         - Commitment privacy depends on entropy. keccak256(value, secret, bidder)
+///           is only as hidden as its inputs, and the address adds none (it is
+///           public): a small bid space with a low-entropy `secret` can be
+///           brute-forced off-chain BEFORE reveal. Bidders must use a full-entropy
+///           32-byte salt; the contract cannot enforce that on-chain.
 contract SealedBidAuction {
     /// @dev The party who receives the winning bid's funds when the auction ends.
     address public immutable beneficiary;
@@ -46,7 +47,7 @@ contract SealedBidAuction {
     uint256 public immutable revealEnd;
 
     struct Bid {
-        bytes32 blindedBid; // keccak256(abi.encodePacked(value, secret))
+        bytes32 blindedBid; // keccak256(abi.encodePacked(value, secret, bidder))
         uint256 deposit; // funds locked at commit time
         bool revealed; // guards against double-reveal
     }
@@ -94,7 +95,7 @@ contract SealedBidAuction {
         revealEnd = biddingEnd + revealTime;
     }
 
-    /// @notice COMMIT phase. Submit keccak256(abi.encodePacked(value, secret)).
+    /// @notice COMMIT phase. Submit keccak256(abi.encodePacked(value, secret, msg.sender)).
     /// @dev Send a deposit >= the value you intend to bid. If you later reveal a
     ///      value larger than your deposit, the bid is treated as invalid. If you
     ///      never reveal, your deposit stays locked forever; this forfeiture is
@@ -124,7 +125,7 @@ contract SealedBidAuction {
         // the value is positive (a zero bid is meaningless and mirrors the Daml
         // model's `amount > 0` rule; otherwise a 0 bid could never win the strict
         // `value > highestBid` check anyway).
-        bool valid = bid.blindedBid == _commitmentOf(value, secret) && bid.deposit >= value && value > 0;
+        bool valid = bid.blindedBid == _commitmentOf(value, secret, msg.sender) && bid.deposit >= value && value > 0;
 
         bool isHighest = false;
         if (valid && value > highestBid) {
@@ -171,18 +172,26 @@ contract SealedBidAuction {
     }
 
     /// @notice Helper so off-chain code and tests build commitments the same way
-    ///         the contract verifies them. (Pure; safe to call off-chain.)
-    function hashBid(uint256 value, bytes32 secret) external pure returns (bytes32) {
-        return _commitmentOf(value, secret);
+    ///         the contract verifies them. Pass the address you will commit and
+    ///         reveal from; the commitment is bound to it. (Pure; safe off-chain.)
+    function hashBid(uint256 value, bytes32 secret, address bidder) external pure returns (bytes32) {
+        return _commitmentOf(value, secret, bidder);
     }
 
     /// @dev Single source of truth for the commitment scheme, used by both
     ///      reveal() and hashBid() so they can never drift apart.
-    ///      NOTE: abi.encodePacked is safe here only because both arguments are
-    ///      fixed-width (uint256, bytes32). With two or more *dynamic* arguments
-    ///      (string/bytes) encodePacked can produce hash collisions; use
+    ///      The bidder's address is part of the commitment, and that binding is
+    ///      load-bearing: without it the hash is anonymous, so an attacker could
+    ///      copy a victim's public commitment, over-deposit, and then front-run
+    ///      the victim's reveal in the mempool (where value+secret become visible)
+    ///      to seize the lead at the victim's own price. Binding `bidder` means a
+    ///      stolen (value, secret) only ever re-hashes to the original committer's
+    ///      commitment, never the attacker's, so the stolen reveal simply fails.
+    ///      NOTE: abi.encodePacked is safe here only because all three arguments
+    ///      are fixed-width (uint256, bytes32, address). With two or more *dynamic*
+    ///      arguments (string/bytes) encodePacked can produce hash collisions; use
     ///      abi.encode in that case.
-    function _commitmentOf(uint256 value, bytes32 secret) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(value, secret));
+    function _commitmentOf(uint256 value, bytes32 secret, address bidder) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(value, secret, bidder));
     }
 }

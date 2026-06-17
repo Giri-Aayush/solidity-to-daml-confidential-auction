@@ -250,7 +250,9 @@ If you came from the Solidity file, here's what you'll notice is *gone*, and why
 - **The reveal phase**: privacy is native, so there's no hide-then-reveal window
   (settlement still has a single `settleBy` deadline).
 - **Forfeiture**: losing bidders aren't punished; their locked funds are returned
-  atomically at settlement, so there's no "reveal or lose your deposit" threat.
+  atomically *when the auctioneer settles*, so there's no "reveal or lose your
+  deposit" threat (its flip side, an auctioneer who never settles, is the liveness
+  caveat in section 8).
 - **`pendingReturns` / `withdraw()` pull-payments**: settlement pays the winner's
   funds to the seller and refunds every loser in one atomic transaction, so there's
   no escrow-then-withdraw step and no reentrancy surface.
@@ -288,6 +290,12 @@ Honesty matters more than a clean story:
   auctioneer issues each invited bidder a single-use `BidRight` that `PlaceBid`
   consumes, so a second bid finds no right left to spend (Daml 3 has no unique keys,
   so this archived-on-use right plays the role a key would).
+- **Auctioneer liveness.** The refunds are atomic, but they only happen once the
+  auctioneer settles: `Settle` requires `now <= settleBy` and the auctioneer chooses
+  which bids to include, so a bidder's funds stay locked if the auctioneer never
+  settles or omits their bid. This sample has no deadline-gated path for a bidder to
+  reclaim on its own; a production design would add one. (The contract's `Settle`
+  carries this as a LIVENESS CAVEAT.)
 - **Divulgence.** A non-stakeholder never receives a `Bid`, so it cannot see one. The
   one nuance: a party *can* learn a contract by witnessing a transaction that uses it
   ([divulgence](https://docs.digitalasset.com/overview/3.4/explanations/ledger-model/ledger-privacy.html)),
@@ -298,7 +306,7 @@ Honesty matters more than a clean story:
 ## 9. Run both yourself
 
 ```bash
-# Solidity: 12 tests (0.8.35)
+# Solidity: 13 tests (0.8.35)
 cd solidity && forge test -vv
 
 # Daml: 7 scripts, including the privacy proof (Daml 3.4)

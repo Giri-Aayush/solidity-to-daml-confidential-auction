@@ -59,7 +59,7 @@ to the Solidity one you already know. A few terms you'll meet:
 
 | Path | What it is | Status |
 |---|---|---|
-| [`solidity/`](solidity/) | First-price sealed-bid auction via commit/reveal, with Foundry tests | ✅ 12/12 tests pass |
+| [`solidity/`](solidity/) | First-price sealed-bid auction via commit/reveal, with Foundry tests | ✅ 13/13 tests pass |
 | [`daml/`](daml/) | The same auction in Daml, private by construction, settled through the Canton Network Token Standard (CIP-0056) with on-ledger bid rights and Daml Script tests | ✅ 7/7 scripts pass |
 | [`guide/solidity-to-daml.md`](guide/solidity-to-daml.md) | The translation guide: concept map, mental-model shift, side-by-side code | 📖 read this |
 
@@ -112,7 +112,7 @@ Homebrew JDK on macOS, so you should not need to touch `PATH` to run the project
 git clone https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction
 cd solidity-to-daml-confidential-auction
 
-make test     # both suites: Solidity (12) + Daml (7), the same thing CI runs
+make test     # both suites: Solidity (13) + Daml (7), the same thing CI runs
 make canton   # run the auction on a REAL Canton node: boots a sandbox, runs the live proof, cleans up
 make web      # open the explainer site locally (Next.js on :3000)
 ```
@@ -123,7 +123,7 @@ build is fully offline.
 <details><summary>Prefer to run the suites directly (without make)?</summary>
 
 ```bash
-cd solidity && forge test -vv   # 12 Foundry tests (Solidity 0.8.35)
+cd solidity && forge test -vv   # 13 Foundry tests (Solidity 0.8.35)
 cd daml && dpm test             # 7 Daml Script tests, including the privacy proof
 ```
 
