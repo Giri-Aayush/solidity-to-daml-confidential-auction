@@ -42,6 +42,26 @@ import Splice.Api.Token.HoldingV1
 import Splice.Api.Token.AllocationV1
 import Splice.Api.Token.MetadataV1
 
+-- Reading this as a Solidity developer? The rough Rosetta Stone:
+--
+--   template T          a contract (the "class"); each created instance has a
+--                       `ContractId`, the analogue of a deployed contract address.
+--   ContractId T        a typed handle to one on-ledger instance of T (like an
+--                       address you can only use where the type fits).
+--   signatory p         the party whose authority the contract carries and who is
+--                       bound by it: like the required msg.sender(s) at creation.
+--   observer p          who is allowed to SEE the contract. A party that is neither
+--                       signatory nor observer does not hold it on their node at all,
+--                       and that native privacy is what replaces commit/reveal.
+--   choice (consuming)  a state-changing external function; exercising it ARCHIVES
+--                       the contract. There is no in-place storage edit: you archive
+--                       (delete) and create (re-deploy) instead of mutating a field.
+--   nonconsuming choice a choice that does not archive the contract, so it can be
+--                       exercised repeatedly (PlaceBid leaves the Auction live).
+--   controller p        who may exercise a choice: authorization is part of the type,
+--                       not a require(msg.sender == p) you have to remember to write.
+--   archive / create    delete / deploy.
+
 -- | The instrument this sample issues. On a real network this would be Canton
 -- Coin, administered by the Amulet registry rather than the auctioneer.
 unitId : Party -> InstrumentId
@@ -79,9 +99,9 @@ template AuctionCoin
     amount : Decimal
     locked : Bool
   where
-    signatory registry
-    observer owner
-    ensure amount > 0.0
+    signatory registry          -- the registry authorizes and is bound, like msg.sender
+    observer owner              -- who may see this coin; a non-stakeholder cannot fetch it
+    ensure amount > 0.0         -- like require(amount > 0) baked into the type
 
     interface instance Holding for AuctionCoin where
       view = HoldingView with
@@ -199,7 +219,7 @@ template Auction
         amount : Decimal
         funds : ContractId AuctionCoin
         right : ContractId BidRight
-      controller bidder
+      controller bidder  -- only the bidder can place it; the authz is in the type, no require
       do
         assertMsg "bidder must be invited to this auction" (bidder `elem` invited)
         assertMsg "bidding is closed" biddingOpen
