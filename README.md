@@ -30,6 +30,31 @@ similar length but spend their lines very differently.)
 > privacy-preserving model: a Confidential Auction reference implementation plus
 > the guide that teaches it.
 
+## New to Canton?
+
+Never left the EVM? The 30-second orientation:
+
+- **Canton** is a privacy-first blockchain network. Instead of one global public
+  ledger, each party keeps only the contracts it is a stakeholder of: think "a network
+  of synchronized private ledgers," not "one shared world computer."
+- **Daml** is its smart-contract language, what you write instead of Solidity.
+- **DPM** is the Daml toolchain CLI (build, test, run a local node), the rough
+  analogue of Foundry's `forge`.
+
+You don't need to install anything to follow along: open the
+[live demo](https://canton-confidential.netlify.app/) and read the
+[guide](guide/solidity-to-daml.md), which introduces every Canton idea by mapping it
+to the Solidity one you already know. A few terms you'll meet:
+
+| Term | What it is, for an EVM developer |
+|---|---|
+| **DAR** | A *Daml Archive*: the compiled package (templates + dependencies), like an EVM contract's bytecode and ABI in one file. |
+| **Participant node** | Your gateway to the ledger; it hosts your parties' contracts and exposes the ledger API. |
+| **Synchronizer** | The shared service that orders and commits transactions across participants (the closest thing to "the chain" that sequences blocks). |
+| **CIP-0056** | The Canton Network Token Standard, defining the `Holding` and `Allocation` (delivery-versus-payment) interfaces this auction settles against. |
+| **Amulet / Canton Coin** | The network's native token and registry; the production stand-in for our self-contained `AuctionCoin`. |
+| **PQS** | Participant Query Store: a PostgreSQL projection of the ledger you query off-ledger (how the auctioneer discovers bids). |
+
 ## What's here
 
 | Path | What it is | Status |
@@ -158,6 +183,17 @@ Ethereum-native. The hardest part of that transition isn't syntax; it's the
 mental flip from "one global, public computer" to "a network of parties with
 per-party, private state." A sealed-bid auction is the smallest complete example
 that forces that flip, which is why it's the one worth teaching first.
+
+## Where to go next
+
+Once the model clicks, here's the trail from this sample to a real Canton app:
+
+- [Daml documentation](https://docs.digitalasset.com/build/3.4/) - the language, Daml Script, and the SDK.
+- [Canton Network overview](https://docs.digitalasset.com/integrate/devnet/canton-network-overview/index.html) - how participants, synchronizers, and the network fit together.
+- [Canton Network Token Standard (CIP-0056)](https://docs.digitalasset.com/integrate/devnet/token-standard.html) - the `Holding` / `Allocation` interfaces this auction settles against.
+- [Splice](https://github.com/hyperledger-labs/splice) - the Amulet (Canton Coin) registry you would swap in for the bundled `AuctionCoin`.
+- [Integrating with the Canton Network](https://docs.digitalasset.com/integrate/devnet/integrating-with-canton-network/index.html) and [validator onboarding](https://docs.dev.sync.global/validator_operator/validator_onboarding.html) - taking it to DevNet against live Canton Coin.
+- [PQS](https://docs.digitalasset.com/build/3.4/component-howtos/pqs/index.html) - production bid discovery, the off-ledger query store this sample stands in for.
 
 ## License
 
