@@ -295,8 +295,18 @@ function PartyPanel({
             </span>
           </TooltipTrigger>
           <TooltipContent className="max-w-[220px] text-xs">
-            A party&apos;s node holds only contracts where it is a signatory or
-            observer. The auctioneer signs every bid; a bidder signs only their own.
+            {mode === "canton" ? (
+              <>
+                A party&apos;s node holds only contracts where it is a signatory or
+                observer. The auctioneer signs every bid; a bidder signs only their own.
+              </>
+            ) : (
+              <>
+                On a public chain every bid is visible to all; the amount is just a
+                hash until its bidder reveals. This counts the bids revealed so far,
+                whose amounts are now readable.
+              </>
+            )}
           </TooltipContent>
         </Tooltip>
       </header>
