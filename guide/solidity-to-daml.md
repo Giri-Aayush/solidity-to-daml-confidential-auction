@@ -306,7 +306,7 @@ Honesty matters more than a clean story:
 ## 9. Run both yourself
 
 ```bash
-# Solidity: 13 tests (0.8.35)
+# Solidity: 16 tests (0.8.35)
 cd solidity && forge test -vv
 
 # Daml: 7 scripts, including the privacy proof (Daml 3.4)

@@ -22,6 +22,26 @@ contract SealedBidAuctionTest is Test {
         vm.deal(carol, 100 ether);
     }
 
+    /// A5: a zero-address beneficiary is rejected at construction, so the winning
+    /// bid can never be credited to an address no one can withdraw from.
+    function test_RejectsZeroBeneficiary() public {
+        vm.expectRevert(SealedBidAuction.ZeroBeneficiary.selector);
+        new SealedBidAuction(BIDDING_TIME, REVEAL_TIME, address(0));
+    }
+
+    /// A6: a zero-length bidding window is rejected (commit() would be unreachable).
+    function test_RejectsZeroBiddingWindow() public {
+        vm.expectRevert(SealedBidAuction.ZeroDuration.selector);
+        new SealedBidAuction(0, REVEAL_TIME, beneficiary);
+    }
+
+    /// A6: a zero-length reveal window is rejected (reveal() could never run, so a
+    /// committed deposit would be stranded).
+    function test_RejectsZeroRevealWindow() public {
+        vm.expectRevert(SealedBidAuction.ZeroDuration.selector);
+        new SealedBidAuction(BIDDING_TIME, 0, beneficiary);
+    }
+
     function _commitment(address who, uint256 value, bytes32 secret) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(value, secret, who));
     }
