@@ -146,12 +146,13 @@ dpm script --dar .daml/dist/confidential-auction-1.0.0.dar \
   --script-name Test:privacyAndSettlement --ledger-host localhost --ledger-port 6865
 ```
 
-On the Canton Network's DevNet you would swap the bundled registry for the Amulet
-(Canton Coin) registry. The settlement orchestration is registry-agnostic (it
-exercises the token-standard `Allocation` choices rather than our templates), but the
-glue that mints the backing holding and forwards the proceeds to the seller is written
-against the bundled coin, so on a real network that part moves to the registry's own
-factory/transfer flow.
+The registry (token issuer) is a separate party from the auctioneer (operator), so no
+one party can both mint funds and run the auction: only the registry mints coins, and
+the auctioneer locks and forwards funds through registry-authorized coin choices and
+the standard `Allocation`. On the Canton Network's DevNet you swap our minimal registry
+for the Amulet (Canton Coin) registry and settle through its `AllocationFactory`; the
+auction targets the token-standard interfaces, so what changes is the registry, not the
+auction.
 
 ## Troubleshooting
 

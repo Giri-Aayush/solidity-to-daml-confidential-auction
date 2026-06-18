@@ -15,11 +15,12 @@ atomic delivery-versus-payment against the **Canton Network Token Standard**
 The auction is written against the real token-standard interfaces, and ships a
 minimal registry that implements them so the sample builds and runs offline:
 
-- **`AuctionCoin`**: a holding that *implements the CIP-0056 `Holding` interface*.
-  Self-contained stand-in for Canton Coin; on a real network this is the Amulet
-  registry's holding instead. Code that reads a holding through the interface is
-  unchanged, but the glue that *mints* `AuctionCoin` (backing a bid, returning change,
-  forwarding proceeds) is registry-specific; see the Registry note below.
+- **`AuctionCoin`**: a holding that *implements the CIP-0056 `Holding` interface*,
+  minted by a `registry` party that is separate from the auctioneer. Self-contained
+  stand-in for Canton Coin; on a real network this is the Amulet registry's holding
+  instead. The auctioneer never mints or moves coins directly: it locks a bid's funds
+  and forwards proceeds only through the coin's own registry-authorized choices
+  (`LockForBid`, `TransferTo`).
 - **`CoinAllocation`**: *implements the CIP-0056 `Allocation` interface*, the
   standard's atomic-DvP primitive. Its `Allocation_ExecuteTransfer` pays the
   receiver; `Allocation_Cancel` / `_Withdraw` refund the sender.
@@ -130,15 +131,14 @@ WHERE t.entity_name = 'Bid';
 
 ### How this maps to production Canton (remaining simplifications)
 
-- *Registry / trust:* `AuctionCoin` is auctioneer-issued for self-containment, which
-  makes the auctioneer issuer + executor + settlement authority all at once, a
-  trusted stub, not a production trust model. On the Canton Network you settle against
-  the live Amulet (Canton Coin) registry through its `AllocationFactory`. The
-  settlement *orchestration* is unchanged (it exercises the `Allocation` interface
-  choices, not our templates), but two glue steps are registry-specific and move to
-  the registry's factory/transfer flow: minting the backing holding/allocation in
-  `PlaceBid`, and re-minting the executed proceeds to the beneficiary in
-  `AwardToBeneficiary`.
+- *Registry:* the registry (token issuer) is a SEPARATE party from the auctioneer
+  (operator and settlement executor). Only the registry mints `AuctionCoin`; the
+  auctioneer moves funds only through the registry-authorized coin choices
+  (`LockForBid`, `TransferTo`) and the standard `Allocation`, so no one party can both
+  issue money and run the auction. Our registry is still a minimal stand-in (single
+  instrument, no fees or governance); on the Canton Network you settle against the live
+  Amulet (Canton Coin) registry through its `AllocationFactory`, but the issuer/operator
+  split this sample shows is the real one.
 - *Auctioneer liveness:* settlement depends on the auctioneer settling before
   `settleBy` and including every bid in `Settle`. If it does not, a bidder is not
   stuck: once `settleBy` passes they call `Bid.ReclaimAfterDeadline` to withdraw their
