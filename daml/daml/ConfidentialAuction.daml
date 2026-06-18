@@ -181,6 +181,15 @@ template BidRight
 
 -- | The coordination contract. The auctioneer owns it; invited bidders are
 -- observers, so they can see the auction and bid, but never each other's bids.
+--
+-- ROSTER CAVEAT (A15): because the invited bidders all observe this one shared
+-- `Auction`, its `invited` field is visible to every one of them. Bid *amounts*
+-- stay private (those live on the per-bidder `Bid`), but the participant *set*
+-- does not. This is a deliberate simplification that keeps the teaching model to a
+-- single auction contract the invited bidders bid on. To hide the roster too, a
+-- production design gives each bidder a private invitation contract (signatory
+-- auctioneer, observer that one bidder) and keeps the roster on an auctioneer-only
+-- contract, so no shared contract ever carries the full list.
 template Auction
   with
     auctioneer : Party
