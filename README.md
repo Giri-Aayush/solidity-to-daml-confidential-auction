@@ -1,7 +1,7 @@
 # From Solidity to Daml: A Confidential Auction on Canton
 
 [![CI](https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction/actions/workflows/ci.yml/badge.svg)](https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-16_Foundry_%2B_7_Daml-2ea043?style=flat-square)](#run-it)
+[![tests](https://img.shields.io/badge/tests-16_Foundry_%2B_8_Daml-2ea043?style=flat-square)](#run-it)
 [![live demo](https://img.shields.io/badge/live_demo-canton--confidential.netlify.app-a78bfa?style=flat-square&logo=netlify&logoColor=white)](https://canton-confidential.netlify.app/)
 [![license](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](#license)
 
@@ -60,7 +60,7 @@ to the Solidity one you already know. A few terms you'll meet:
 | Path | What it is | Status |
 |---|---|---|
 | [`solidity/`](solidity/) | First-price sealed-bid auction via commit/reveal, with Foundry tests | ✅ 16/16 tests pass |
-| [`daml/`](daml/) | The same auction in Daml, private by construction, settled through the Canton Network Token Standard (CIP-0056) with on-ledger bid rights and Daml Script tests | ✅ 7/7 scripts pass |
+| [`daml/`](daml/) | The same auction in Daml, private by construction, settled through the Canton Network Token Standard (CIP-0056) with on-ledger bid rights and Daml Script tests | ✅ 8/8 scripts pass |
 | [`guide/solidity-to-daml.md`](guide/solidity-to-daml.md) | The translation guide: concept map, mental-model shift, side-by-side code | 📖 read this |
 
 **Start with the [guide](guide/solidity-to-daml.md).** Then read the two contracts
@@ -113,7 +113,7 @@ Homebrew JDK on macOS, so you should not need to touch `PATH` to run the project
 git clone https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction
 cd solidity-to-daml-confidential-auction
 
-make test     # both suites: Solidity (16) + Daml (7), the same thing CI runs
+make test     # both suites: Solidity (16) + Daml (8), the same thing CI runs
 make canton   # run the auction on a REAL Canton node: boots a sandbox, runs the live proof, cleans up
 make web      # open the explainer site locally (Next.js on :3000)
 ```
@@ -125,7 +125,7 @@ build is fully offline.
 
 ```bash
 cd solidity && forge test -vv   # 16 Foundry tests (Solidity 0.8.35)
-cd daml && dpm test             # 7 Daml Script tests, including the privacy proof
+cd daml && dpm test             # 8 Daml Script tests, including the privacy proof
 ```
 
 On macOS, running `dpm` directly (not via `make`) needs the Homebrew JDK on your

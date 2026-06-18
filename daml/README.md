@@ -67,10 +67,11 @@ dpm build
 dpm test
 ```
 
-Seven scripts: `privacyAndSettlement` (privacy + token-standard DvP),
+Eight scripts: `privacyAndSettlement` (privacy + token-standard DvP),
 `oneBidPerBidder` (on-ledger single bid), `nonInvitedCannotBid`,
 `closedBiddingRejectsLateBids`, `cannotSettleWhileOpen`, `settlementRespectsDeadline`,
-and `explicitDisclosure` (using a disclosed contract).
+`deadlineReclaim` (bidder reclaim after the deadline), and `explicitDisclosure`
+(using a disclosed contract).
 
 ## Run it on a real Canton node
 
@@ -132,9 +133,10 @@ WHERE t.entity_name = 'Bid';
   the registry's factory/transfer flow: minting the backing holding/allocation in
   `PlaceBid`, and re-minting the executed proceeds to the beneficiary in
   `AwardToBeneficiary`.
-- *Auctioneer liveness:* refunds depend on the auctioneer settling before `settleBy`
-  and including every bid in `Settle`; this sample has no deadline-gated path for a
-  bidder to reclaim locked funds on its own, which a production design would add.
+- *Auctioneer liveness:* settlement depends on the auctioneer settling before
+  `settleBy` and including every bid in `Settle`. If it does not, a bidder is not
+  stuck: once `settleBy` passes they call `Bid.ReclaimAfterDeadline` to withdraw their
+  own funds without the auctioneer (the reclaim and settlement windows are disjoint).
 - *Network:* `dpm sandbox` is a single participant. Cross-organization privacy is
   enforced when each party is hosted on its own participant across a synchronizer;
   the per-party visibility this sample relies on is the same mechanism.
