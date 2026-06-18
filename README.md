@@ -123,7 +123,7 @@ build is fully offline.
 <details><summary>Prefer to run the suites directly (without make)?</summary>
 
 ```bash
-cd solidity && forge test -vv   # 13 Foundry tests (Solidity 0.8.35)
+cd solidity && forge test -vv   # 16 Foundry tests (Solidity 0.8.35)
 cd daml && dpm test             # 7 Daml Script tests, including the privacy proof
 ```
 
