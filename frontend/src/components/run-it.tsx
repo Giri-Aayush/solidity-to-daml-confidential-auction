@@ -6,7 +6,7 @@ const GUIDE = `${REPO}/blob/main/guide/solidity-to-daml.md`;
 const LINES: { cmd: string; note?: string }[] = [
   { cmd: "git clone github.com/Giri-Aayush/solidity-to-daml-confidential-auction" },
   { cmd: "cd solidity-to-daml-confidential-auction" },
-  { cmd: "make test", note: "16 solidity + 7 daml tests, green" },
+  { cmd: "make test", note: "16 solidity + 8 daml tests, green" },
   { cmd: "make canton", note: "the auction on a real canton node" },
   { cmd: "make web", note: "this site, locally" },
 ];

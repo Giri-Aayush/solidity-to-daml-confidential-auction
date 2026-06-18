@@ -277,3 +277,48 @@ explicitDisclosure = script do
 
   stillHidden <- query @Auction dave
   stillHidden === []
+
+-- | Liveness: once the settlement deadline passes, a bidder can reclaim their own
+-- locked funds without the auctioneer, and only the bidder can. Before the deadline,
+-- and for anyone other than the bidder, reclaim is refused.
+deadlineReclaim : Script ()
+deadlineReclaim = script do
+  auctioneer <- allocateParty "Auctioneer"
+  seller <- allocateParty "Seller"
+  alice <- allocateParty "Alice"
+  now <- getTime
+
+  aliceFunds <- fund auctioneer alice 30.0
+  auctionCid <- submit auctioneer do
+    createCmd Auction with
+      auctioneer
+      auctionId = "PAINTING-2026"
+      item = "Rare painting"
+      beneficiary = seller
+      invited = [alice]
+      settleBy = addRelTime now (hours 1)
+      biddingOpen = True
+
+  aliceRight <- invite auctioneer auctionCid alice
+  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 30.0, funds = aliceFunds, right = aliceRight
+
+  -- Her 30 is locked behind the allocation; she holds no free coin right now.
+  locked <- query @AuctionCoin alice
+  map (\(_, c) -> (c.amount, c.locked)) locked === [(30.0, True)]
+
+  -- Before the deadline, reclaim is refused: settlement is still the auctioneer's.
+  alice `submitMustFail` exerciseCmd aliceBid ReclaimAfterDeadline
+
+  passTime (hours 2) -- advance past settleBy
+
+  -- The auctioneer cannot reclaim on the bidder's behalf (controller is the bidder).
+  auctioneer `submitMustFail` exerciseCmd aliceBid ReclaimAfterDeadline
+
+  -- The bidder reclaims her own funds, no auctioneer involved.
+  _ <- submit alice do exerciseCmd aliceBid ReclaimAfterDeadline
+
+  -- The bid is gone and her funds are back, unlocked.
+  remaining <- query @Bid alice
+  remaining === []
+  refunded <- query @AuctionCoin alice
+  map (\(_, c) -> (c.amount, c.locked)) refunded === [(30.0, False)]

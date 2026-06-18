@@ -294,7 +294,7 @@ template Auction
                 meta = emptyMetadata
         allocCid <- create CoinAllocation with registry = auctioneer; spec; backing
         create Bid with
-          auctioneer, auctionId, item, bidder, beneficiary, amount
+          auctioneer, auctionId, item, bidder, beneficiary, amount, settleBy
           allocation = toInterfaceContractId @Allocation allocCid
 
     -- | The auctioneer closes bidding; the reissued Auction rejects late bids.
@@ -308,15 +308,14 @@ template Auction
     -- allocation is cancelled (refunded), and the result is recorded: either all
     -- of that happens or none of it does.
     --
-    -- LIVENESS CAVEAT: refunds depend on the auctioneer, on it including every bid
-    -- in `bidCids` and on it running `Settle` before `settleBy`. A bid the auctioneer
-    -- omits, or an auctioneer that never settles before the deadline, leaves those
-    -- funds locked, because past `settleBy` this choice can no longer run. The
-    -- bidder's only recourse is to exercise `Allocation_Withdraw` directly (it is
-    -- sender-controlled), which this sample neither exposes nor tests, and doing so
-    -- would make a later `Settle` that still lists that bid `abort`. A production
-    -- design adds a deadline-gated reclaim path so no bidder depends on the
-    -- auctioneer's good behaviour to get their funds back.
+    -- LIVENESS: settlement depends on the auctioneer including every bid in `bidCids`
+    -- and running `Settle` before `settleBy`. If it omits a bid or never settles in
+    -- time, that bid cannot be settled here (this choice requires `now <= settleBy`).
+    -- The bidder is not stuck, though: once `now > settleBy` they call
+    -- `Bid.ReclaimAfterDeadline` to withdraw their own funds without the auctioneer.
+    -- The two windows are disjoint, so a bid is never both settle-eligible and
+    -- reclaimable, and reclaim archives the `Bid`, so it can never dangle into a
+    -- later `Settle`. (Winner-correctness below is a separate, still-open matter.)
     --
     -- WINNER-CORRECTNESS CAVEAT: `Settle` trusts `bidCids` to be the COMPLETE set
     -- of live bids. Nothing on-ledger forces inclusion of every bid, so a malicious
@@ -390,6 +389,7 @@ template Bid
     bidder : Party
     beneficiary : Party
     amount : Decimal
+    settleBy : Time          -- copied from the Auction so the bidder can reclaim past it
     allocation : ContractId Allocation
   where
     signatory auctioneer, bidder
@@ -434,6 +434,26 @@ template Bid
       do
         _ <- exercise allocation Allocation_Cancel with extraArgs = noExtraArgs
         pure ()
+
+    -- | Liveness: once the settlement window has closed, the bidder can reclaim
+    -- their own locked funds WITHOUT the auctioneer. `Settle` requires
+    -- `now <= settleBy` and this requires `now > settleBy`, so the windows are
+    -- disjoint: a bid is never both settle-eligible and reclaimable, and `Settle`
+    -- needs no change. The refund needs no one else's authority: `Allocation_Withdraw`
+    -- is sender-controlled and the bidder is the sender, while the registry authority
+    -- to mint the refund coin comes from the allocation's own signatory set. Archiving
+    -- the `Bid` (this choice is consuming) stops a reclaimed bid dangling into a later
+    -- `Settle`. This is the deadline-gated reclaim the LIVENESS CAVEAT above prescribes.
+    choice ReclaimAfterDeadline : ContractId Holding
+      controller bidder
+      do
+        now <- getTime
+        assertMsg "can only reclaim after the settlement deadline has passed"
+          (now > settleBy)
+        res <- exercise allocation Allocation_Withdraw with extraArgs = noExtraArgs
+        case res.senderHoldingCids of
+          [refund] -> pure refund
+          _ -> abort "withdraw must return exactly one refund holding"
 
 -- | The outcome, disclosed only to the auctioneer and the winning bidder.
 -- Losing bidders never learn the winning amount.

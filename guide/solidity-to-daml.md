@@ -292,10 +292,10 @@ Honesty matters more than a clean story:
   so this archived-on-use right plays the role a key would).
 - **Auctioneer liveness.** The refunds are atomic, but they only happen once the
   auctioneer settles: `Settle` requires `now <= settleBy` and the auctioneer chooses
-  which bids to include, so a bidder's funds stay locked if the auctioneer never
-  settles or omits their bid. This sample has no deadline-gated path for a bidder to
-  reclaim on its own; a production design would add one. (The contract's `Settle`
-  carries this as a LIVENESS CAVEAT.)
+  which bids to include. A bidder is not at its mercy, though: once `settleBy` passes,
+  `Bid.ReclaimAfterDeadline` lets the bidder withdraw their own funds without the
+  auctioneer. The reclaim and settlement windows are disjoint (`now > settleBy` vs
+  `now <= settleBy`), so a bid is never both settleable and reclaimable.
 - **Divulgence.** A non-stakeholder never receives a `Bid`, so it cannot see one. The
   one nuance: a party *can* learn a contract by witnessing a transaction that uses it
   ([divulgence](https://docs.digitalasset.com/overview/3.4/explanations/ledger-model/ledger-privacy.html)),
@@ -309,7 +309,7 @@ Honesty matters more than a clean story:
 # Solidity: 16 tests (0.8.35)
 cd solidity && forge test -vv
 
-# Daml: 7 scripts, including the privacy proof (Daml 3.4)
+# Daml: 8 scripts, including the privacy proof (Daml 3.4)
 cd daml && dpm test
 ```
 
