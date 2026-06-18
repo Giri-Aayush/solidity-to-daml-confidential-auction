@@ -15,13 +15,12 @@
 -- `Allocation` interface. We ship a minimal registry (`AuctionCoin` /
 -- `CoinAllocation`) that *implements* those interfaces so the sample is
 -- self-contained; on a real network you swap it for the Amulet (Canton Coin)
--- registry. The settlement *orchestration* is registry-agnostic (it exercises
--- the standard `Allocation_ExecuteTransfer` / `Allocation_Cancel` choices, not
--- our templates), but two glue steps are registry-specific and would move to the
--- registry's own factory/transfer flow on a real network: minting the backing
--- holding and allocation in `PlaceBid`, and re-minting the executed proceeds to
--- the beneficiary in `AwardToBeneficiary` (both build the concrete `AuctionCoin`,
--- which only works here because the auctioneer is also the issuer).
+-- registry. The registry (token issuer) is a SEPARATE party from the auctioneer
+-- (auction operator and settlement executor): only the registry mints coins, and the
+-- auctioneer moves funds only through registry-authorized coin choices (`LockForBid`
+-- to lock a bid's backing, `TransferTo` to forward proceeds) and the standard
+-- `Allocation` choices, never by minting. So no one party can both issue money and
+-- run the auction, the same separation the Amulet registry gives you in production.
 --
 -- Privacy of the money leg: every bid is allocated to the auctioneer (the
 -- settlement executor), never to the beneficiary, so the seller never learns a
@@ -83,25 +82,27 @@ releaseToSender registry spec backing = do
     owner = spec.transferLeg.sender
     amount = spec.transferLeg.amount
     locked = False
+    lockObservers = []
   pure (toInterfaceContractId @Holding refund)
 
--- | A fungible holding that implements the CIP-0056 `Holding` interface. For a
--- self-contained sample the registry (issuer) is the auctioneer and the sole
--- signatory; a production registry such as Canton Coin issues these instead.
--- TRUST CAVEAT: because the auctioneer is the sole signatory of every coin, it can
--- mint, burn, and move them unilaterally. In this sample the auctioneer is therefore
--- issuer + executor + settlement authority all at once, so every privacy and DvP
--- guarantee rests on that one party. This is a teaching stub; do not lift it into
--- production; use a real registry where issuance and settlement authority are split.
+-- | A fungible holding that implements the CIP-0056 `Holding` interface, issued by a
+-- `registry` party DISTINCT from the auctioneer. The registry is the sole signatory,
+-- so only it can mint coins; the auctioneer operates the auction and executes
+-- settlement but can never issue or move funds except through the registry-authorized
+-- coin choices below (`LockForBid`, `TransferTo`) and the standard `Allocation`. On a
+-- real network the registry is Canton Coin's; here it is a self-contained stub, but
+-- issuance and settlement authority are genuinely split across two parties, so no one
+-- party can both mint money and run the auction.
 template AuctionCoin
   with
     registry : Party
     owner : Party
     amount : Decimal
     locked : Bool
+    lockObservers : [Party]     -- extra observers (the settlement executor) so it can see a locked backing
   where
     signatory registry          -- the registry authorizes and is bound, like msg.sender
-    observer owner              -- who may see this coin; a non-stakeholder cannot fetch it
+    observer owner, lockObservers  -- the owner, plus the executor that must settle a locked backing
     ensure amount > 0.0         -- like require(amount > 0) baked into the type
 
     interface instance Holding for AuctionCoin where
@@ -125,6 +126,70 @@ template AuctionCoin
             else None
         meta = emptyMetadata
 
+    -- | The owner locks (part of) this coin to back a bid. This is the registry-
+    -- authorized mint path: the body carries the registry's authority (the coin's
+    -- signatory) plus the owner's, so it can create the locked backing holding, any
+    -- change, and the `CoinAllocation` (signed by registry + sender). `PlaceBid`, on
+    -- the auctioneer-signed `BidRight`, has no registry authority of its own, so it
+    -- drives the lock through here. The terms are passed in (this choice cannot fetch
+    -- the auctioneer-signed `AuctionTerms`); `PlaceBid` reads and validates them first.
+    choice LockForBid : ContractId Allocation
+      with
+        bidAmount : Decimal
+        auctioneer : Party
+        auctionId : Text
+        item : Text
+        settleBy : Time
+      controller owner
+      do
+        assertMsg "coin is already locked" (not locked)
+        assertMsg "bid must be positive" (bidAmount > 0.0)
+        assertMsg "coin does not cover the bid" (amount >= bidAmount)
+        -- Return any change to the owner as a fresh, unlocked holding.
+        if amount > bidAmount
+          then do
+            _ <- create AuctionCoin with registry, owner, amount = amount - bidAmount, locked = False, lockObservers = []
+            pure ()
+          else pure ()
+        -- The locked backing names the executor (auctioneer) in lockObservers so the
+        -- settlement transaction can see it, even though the auctioneer is not the issuer.
+        backing <- create AuctionCoin with registry, owner, amount = bidAmount, locked = True, lockObservers = [auctioneer]
+        now <- getTime
+        -- `allocateBefore` / `settleBefore` are SHOULD-enforced deadlines a real
+        -- registry honors; our `CoinAllocation` ignores them and the auction gates on
+        -- `settleBy`. (Note `Settle`'s `now <= settleBy` is inclusive while
+        -- `settleBefore` is exclusive; align them when porting to a deadline-enforcing
+        -- registry.) The leg's instrument is this coin's, minted by the registry.
+        let spec = AllocationSpecification with
+              settlement = SettlementInfo with
+                executor = auctioneer
+                settlementRef = Reference with id = auctionId; cid = None
+                requestedAt = now
+                allocateBefore = settleBy
+                settleBefore = settleBy
+                meta = emptyMetadata
+              transferLegId = item
+              transferLeg = TransferLeg with
+                sender = owner
+                receiver = auctioneer
+                amount = bidAmount
+                instrumentId = unitId registry
+                meta = emptyMetadata
+        allocCid <- create CoinAllocation with registry; spec; backing
+        pure (toInterfaceContractId @Allocation allocCid)
+
+    -- | The owner hands an unlocked holding to a new owner. The registry's authority
+    -- (the coin's signatory) flows through this choice, so `AwardToBeneficiary` can
+    -- forward the executed proceeds to the beneficiary without the auctioneer being
+    -- the issuer: it exercises this on the coin it received rather than re-minting.
+    choice TransferTo : ContractId AuctionCoin
+      with
+        newOwner : Party
+      controller owner
+      do
+        assertMsg "cannot transfer a locked holding" (not locked)
+        create this with owner = newOwner
+
 -- | A reservation of one bidder's funds to a settlement leg, implementing the
 -- CIP-0056 `Allocation` interface (the standard's atomic-DvP primitive). The
 -- three interface choices delegate to the methods below: executing pays the
@@ -136,6 +201,11 @@ template CoinAllocation
     backing : ContractId AuctionCoin
   where
     signatory registry, spec.transferLeg.sender
+    -- The executor and receiver must SEE the allocation to settle it (they are not
+    -- signatories). The standard's choices are jointly controlled by all three, and
+    -- with a registry distinct from the auctioneer this visibility is what lets the
+    -- auctioneer drive `Allocation_ExecuteTransfer` / `Allocation_Cancel` at all.
+    observer spec.settlement.executor, spec.transferLeg.receiver
     ensure spec.transferLeg.amount > 0.0
 
     interface instance Allocation for CoinAllocation where
@@ -151,6 +221,7 @@ template CoinAllocation
           owner = spec.transferLeg.receiver
           amount = spec.transferLeg.amount
           locked = False
+          lockObservers = []
         pure Allocation_ExecuteTransferResult with
           senderHoldingCids = []
           receiverHoldingCids = [toInterfaceContractId @Holding paid]
@@ -199,56 +270,21 @@ template BidRight
         assertMsg "bidding is closed" t.biddingOpen
         assertMsg "bid must be positive" (amount > 0.0)
 
-        -- Take the bidder's coin, split out the bid amount, return any change.
+        -- Validate the funding coin, then lock it through a choice ON the coin, which
+        -- carries the registry's authority. PlaceBid runs on the auctioneer-signed
+        -- BidRight and so has no registry authority of its own; `LockForBid` mints the
+        -- locked backing holding (plus any change) and the standard `CoinAllocation`.
         coin <- fetch funds
         assertMsg "funds must be the bidder's own coin" (coin.owner == bidder)
-        assertMsg "funds must be issued by this auction's registry" (coin.registry == auctioneer)
-        assertMsg "coin does not cover the bid" (coin.amount >= amount)
-        -- A14: a multi-instrument registry must also assert the funding holding's
-        -- instrument matches this auction's (holding.instrumentId == unitId auctioneer),
-        -- or it would accept a wrong-denomination coin and mislabel the leg as "CC".
-        -- AuctionCoin has no instrumentId field (this sample issues a single
-        -- instrument), so the check is structurally absent here; add it once the
-        -- holding carries a real instrument id.
-        archive funds
-        if coin.amount > amount
-          then do
-            _ <- create AuctionCoin with
-              registry = auctioneer, owner = bidder, amount = coin.amount - amount, locked = False
-            pure ()
-          else pure ()
-
-        -- Lock the bid amount as the holding backing a standard Allocation.
-        backing <- create AuctionCoin with
-          registry = auctioneer, owner = bidder, amount, locked = True
-        now <- getTime
-        -- The standard's `allocateBefore` / `settleBefore` are deadlines a conforming
-        -- registry SHOULD enforce (allocate before the first, execute before the
-        -- second, exclusive). Our bundled `CoinAllocation` ignores them and the
-        -- auction gates settlement on `now <= settleBy` instead. Note that boundary
-        -- mismatch: `Settle` allows `now == settleBy` (inclusive) while `settleBefore`
-        -- is exclusive, so porting to a real registry means picking `settleBefore`
-        -- strictly after the last moment `Settle` may run, and `allocateBefore`
-        -- earlier still. Kept equal here only to keep the sample short.
-        let spec = AllocationSpecification with
-              settlement = SettlementInfo with
-                executor = auctioneer
-                settlementRef = Reference with id = auctionId; cid = None
-                requestedAt = now
-                allocateBefore = t.settleBy
-                settleBefore = t.settleBy
-                meta = emptyMetadata
-              transferLegId = t.item
-              transferLeg = TransferLeg with
-                sender = bidder
-                receiver = auctioneer
-                amount
-                instrumentId = unitId auctioneer
-                meta = emptyMetadata
-        allocCid <- create CoinAllocation with registry = auctioneer; spec; backing
+        assertMsg "funds must be issued by this auction's registry" (coin.registry == t.registry)
+        -- A14: a multi-instrument registry would also assert the holding's instrument
+        -- matches this auction's; AuctionCoin has no instrumentId field (single
+        -- instrument), so that check is structurally absent here.
+        allocation <- exercise funds LockForBid with
+          bidAmount = amount, auctioneer, auctionId, item = t.item, settleBy = t.settleBy
         create Bid with
           auctioneer, auctionId, item = t.item, bidder, beneficiary = t.beneficiary, amount, settleBy = t.settleBy
-          allocation = toInterfaceContractId @Allocation allocCid
+          allocation
 
 -- | The public terms of the auction, signed by the auctioneer alone. It carries NO
 -- roster and no bidder observes it, so the participant set never leaks. Bidders reach
@@ -259,6 +295,7 @@ template BidRight
 template AuctionTerms
   with
     auctioneer : Party
+    registry : Party          -- the token issuer, distinct from the auctioneer
     auctionId : Text
     item : Text
     beneficiary : Party
@@ -407,27 +444,24 @@ template Bid
     choice AwardToBeneficiary : Decimal
       controller auctioneer
       do
-        -- Executing the allocation is interface-level (registry-agnostic). The
-        -- forward to the beneficiary below is NOT: it downcasts the proceeds to
-        -- the concrete `AuctionCoin` and re-mints, which only works because the
-        -- auctioneer is this sample's issuer. Against a real registry (Amulet)
-        -- the proceeds would be forwarded via the registry's own transfer flow,
-        -- not archived and re-created here.
+        -- Executing the allocation is interface-level: the proceeds land with the
+        -- receiver (the auctioneer/executor). The forward to the beneficiary is then
+        -- done through the coin's own `TransferTo` choice, which carries the registry's
+        -- authority, so the auctioneer never has to be the issuer to move the funds on.
         res <- exercise allocation Allocation_ExecuteTransfer with extraArgs = noExtraArgs
         -- A11: the bundled registry returns no sender change, but a conforming one
         -- may. Don't silently drop it: assert it is empty so a future port is
         -- forced to route `senderHoldingCids` instead of orphaning them.
         assertMsg "unexpected sender change from execute; a port must forward it"
           (null res.senderHoldingCids)
-        -- A10/A12: forward every executed receiver holding and total what actually
-        -- moved. Summing the real holdings (rather than assuming exactly one of the
-        -- bid amount) means an empty/short result cannot masquerade as full payment.
+        -- A10/A12: forward every executed receiver holding to the beneficiary and total
+        -- what actually moved. Summing the real holdings (rather than assuming exactly
+        -- one of the bid amount) means an empty/short result cannot masquerade as full
+        -- payment.
         forwarded <- forA res.receiverHoldingCids \hc -> do
           let coinCid = fromInterfaceContractId @AuctionCoin hc
           c <- fetch coinCid
-          archive coinCid
-          _ <- create AuctionCoin with
-            registry = auctioneer, owner = beneficiary, amount = c.amount, locked = False
+          _ <- exercise coinCid TransferTo with newOwner = beneficiary
           pure c.amount
         let total = sum forwarded
         assertMsg "executed proceeds must equal the winning bid amount" (total == amount)

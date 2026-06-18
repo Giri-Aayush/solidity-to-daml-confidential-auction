@@ -3,7 +3,8 @@
 -- The headline test, `privacyAndSettlement`, proves on a running ledger that a
 -- bidder sees exactly their own bid and nothing else, and that settlement moves
 -- real funds atomically through the CIP-0056 `Allocation` interface: the winner
--- pays the beneficiary while losers are refunded, all in one transaction.
+-- pays the beneficiary while losers are refunded, all in one transaction. The
+-- registry (token issuer) is a separate party from the auctioneer throughout.
 --
 -- Reads like a Foundry test suite, if you know one: each `Script` is a test
 -- function; `submit p cmd` is a transaction sent as party `p` (roughly
@@ -17,19 +18,20 @@ import Daml.Script
 import DA.Assert ((===))
 import DA.Time (addRelTime, hours)
 
--- Issue a token-standard holding to a party. The auctioneer plays the registry
--- role in this self-contained sample, so it is the issuer.
+-- Issue a token-standard holding to a party. Only the registry (the issuer) can mint.
 fund : Party -> Party -> Decimal -> Script (ContractId AuctionCoin)
 fund registry owner amount =
-  submit registry do createCmd AuctionCoin with registry, owner, amount, locked = False
+  submit registry do createCmd AuctionCoin with registry, owner, amount, locked = False, lockObservers = []
 
 -- Create the split auction: the public, roster-free `AuctionTerms` plus the private
--- `AuctionRoster` (which only the auctioneer ever sees). Returns both cids.
-mkAuction : Party -> Party -> [Party] -> Time -> Script (ContractId AuctionTerms, ContractId AuctionRoster)
-mkAuction auctioneer beneficiary invited settleBy = do
+-- `AuctionRoster`. The registry (issuer) is recorded on the terms but is a separate
+-- party from the auctioneer (operator), who signs both contracts.
+mkAuction : Party -> Party -> Party -> [Party] -> Time -> Script (ContractId AuctionTerms, ContractId AuctionRoster)
+mkAuction registry auctioneer beneficiary invited settleBy = do
   terms <- submit auctioneer do
     createCmd AuctionTerms with
       auctioneer
+      registry
       auctionId = "PAINTING-2026"
       item = "Rare painting"
       beneficiary
@@ -52,22 +54,28 @@ placeBid auctioneer terms bidder right amount funds = do
   submit (actAs bidder <> disclose disc) do
     exerciseCmd right PlaceBid with terms, amount, funds
 
--- | Sealed bids stay private; settlement is an atomic DvP that pays the
--- beneficiary from the winner and refunds the losers. The roster stays private too.
+-- | Sealed bids stay private; settlement is an atomic DvP that pays the beneficiary
+-- from the winner and refunds the losers. The roster stays private, and the auctioneer
+-- (operator) is not the registry (issuer).
 privacyAndSettlement : Script ()
 privacyAndSettlement = script do
   auctioneer <- allocateParty "Auctioneer"
+  registry <- allocateParty "Registry"
   seller <- allocateParty "Seller"
   alice <- allocateParty "Alice"
   bob <- allocateParty "Bob"
   carol <- allocateParty "Carol"
   now <- getTime
 
-  aliceFunds <- fund auctioneer alice 30.0
-  bobFunds <- fund auctioneer bob 50.0
-  carolFunds <- fund auctioneer carol 40.0
+  aliceFunds <- fund registry alice 30.0
+  bobFunds <- fund registry bob 50.0
+  carolFunds <- fund registry carol 40.0
 
-  (terms, roster) <- mkAuction auctioneer seller [alice, bob, carol] (addRelTime now (hours 24))
+  -- Registry split: the auctioneer operates the auction but is NOT the issuer, so it
+  -- cannot mint a registry-signed coin (only the registry can). It can never make money.
+  auctioneer `submitMustFail` createCmd AuctionCoin with registry, owner = alice, amount = 1.0, locked = False, lockObservers = []
+
+  (terms, roster) <- mkAuction registry auctioneer seller [alice, bob, carol] (addRelTime now (hours 24))
 
   aliceRight <- invite auctioneer roster alice
   bobRight <- invite auctioneer roster bob
@@ -138,13 +146,14 @@ privacyAndSettlement = script do
 oneBidPerBidder : Script ()
 oneBidPerBidder = script do
   auctioneer <- allocateParty "Auctioneer"
+  registry <- allocateParty "Registry"
   seller <- allocateParty "Seller"
   alice <- allocateParty "Alice"
   now <- getTime
 
-  firstFunds <- fund auctioneer alice 30.0
-  secondFunds <- fund auctioneer alice 30.0
-  (terms, roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 24))
+  firstFunds <- fund registry alice 30.0
+  secondFunds <- fund registry alice 30.0
+  (terms, roster) <- mkAuction registry auctioneer seller [alice] (addRelTime now (hours 24))
 
   aliceRight <- invite auctioneer roster alice
   -- First bid consumes the right.
@@ -167,13 +176,14 @@ oneBidPerBidder = script do
 nonInvitedCannotBid : Script ()
 nonInvitedCannotBid = script do
   auctioneer <- allocateParty "Auctioneer"
+  registry <- allocateParty "Registry"
   seller <- allocateParty "Seller"
   alice <- allocateParty "Alice"
   mallory <- allocateParty "Mallory"
   now <- getTime
 
-  malloryFunds <- fund auctioneer mallory 999.0
-  (terms, roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 24))
+  malloryFunds <- fund registry mallory 999.0
+  (terms, roster) <- mkAuction registry auctioneer seller [alice] (addRelTime now (hours 24))
 
   -- A non-invited party cannot be issued a right (the roster gates issuance).
   auctioneer `submitMustFail` exerciseCmd roster IssueBidRight with bidder = mallory
@@ -189,12 +199,13 @@ nonInvitedCannotBid = script do
 closedBiddingRejectsLateBids : Script ()
 closedBiddingRejectsLateBids = script do
   auctioneer <- allocateParty "Auctioneer"
+  registry <- allocateParty "Registry"
   seller <- allocateParty "Seller"
   alice <- allocateParty "Alice"
   now <- getTime
 
-  aliceFunds <- fund auctioneer alice 10.0
-  (terms, roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 24))
+  aliceFunds <- fund registry alice 10.0
+  (terms, roster) <- mkAuction registry auctioneer seller [alice] (addRelTime now (hours 24))
 
   aliceRight <- invite auctioneer roster alice
   closedTerms <- submit auctioneer do exerciseCmd terms CloseBidding
@@ -206,12 +217,13 @@ closedBiddingRejectsLateBids = script do
 cannotSettleWhileOpen : Script ()
 cannotSettleWhileOpen = script do
   auctioneer <- allocateParty "Auctioneer"
+  registry <- allocateParty "Registry"
   seller <- allocateParty "Seller"
   alice <- allocateParty "Alice"
   now <- getTime
 
-  aliceFunds <- fund auctioneer alice 10.0
-  (terms, roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 24))
+  aliceFunds <- fund registry alice 10.0
+  (terms, roster) <- mkAuction registry auctioneer seller [alice] (addRelTime now (hours 24))
 
   aliceRight <- invite auctioneer roster alice
   aliceBid <- placeBid auctioneer terms alice aliceRight 10.0 aliceFunds
@@ -221,12 +233,13 @@ cannotSettleWhileOpen = script do
 settlementRespectsDeadline : Script ()
 settlementRespectsDeadline = script do
   auctioneer <- allocateParty "Auctioneer"
+  registry <- allocateParty "Registry"
   seller <- allocateParty "Seller"
   alice <- allocateParty "Alice"
   now <- getTime
 
-  aliceFunds <- fund auctioneer alice 10.0
-  (terms, roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 1))
+  aliceFunds <- fund registry alice 10.0
+  (terms, roster) <- mkAuction registry auctioneer seller [alice] (addRelTime now (hours 1))
 
   aliceRight <- invite auctioneer roster alice
   aliceBid <- placeBid auctioneer terms alice aliceRight 10.0 aliceFunds
@@ -241,12 +254,13 @@ settlementRespectsDeadline = script do
 explicitDisclosure : Script ()
 explicitDisclosure = script do
   auctioneer <- allocateParty "Auctioneer"
+  registry <- allocateParty "Registry"
   seller <- allocateParty "Seller"
   alice <- allocateParty "Alice"
   dave <- allocateParty "Dave" -- a prospective bidder, not invited, not an observer
   now <- getTime
 
-  (terms, _roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 24))
+  (terms, _roster) <- mkAuction registry auctioneer seller [alice] (addRelTime now (hours 24))
 
   -- Dave is not a stakeholder, so the terms are not on his ledger at all.
   daveSees <- query @AuctionTerms dave
@@ -270,12 +284,13 @@ explicitDisclosure = script do
 deadlineReclaim : Script ()
 deadlineReclaim = script do
   auctioneer <- allocateParty "Auctioneer"
+  registry <- allocateParty "Registry"
   seller <- allocateParty "Seller"
   alice <- allocateParty "Alice"
   now <- getTime
 
-  aliceFunds <- fund auctioneer alice 30.0
-  (terms, roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 1))
+  aliceFunds <- fund registry alice 30.0
+  (terms, roster) <- mkAuction registry auctioneer seller [alice] (addRelTime now (hours 1))
 
   aliceRight <- invite auctioneer roster alice
   aliceBid <- placeBid auctioneer terms alice aliceRight 30.0 aliceFunds

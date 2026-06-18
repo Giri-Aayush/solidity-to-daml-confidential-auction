@@ -279,14 +279,14 @@ Honesty matters more than a clean story:
   ([CIP-0056](https://github.com/canton-foundation/cips/blob/main/cip-0056/cip-0056.md))
   `Holding` interface and settled through its `Allocation` (atomic-DvP) interface. The
   auction *targets those interfaces*, but it bundles a minimal registry
-  (`AuctionCoin` / `CoinAllocation`) that implements them, with the auctioneer playing
-  the issuer/executor role so the sample is self-contained. On a real network you swap
-  in the Amulet (Canton Coin) registry. The *settlement orchestration* (exercising
-  `Allocation_ExecuteTransfer` / `Allocation_Cancel`) is registry-agnostic, but two
-  steps are not: creating the backing holding/allocation in `PlaceBid`, and
-  re-minting the proceeds to the beneficiary in `AwardToBeneficiary`, both reach for
-  the concrete `AuctionCoin` template. Against a real registry those go through the
-  registry's own factory/transfer flow instead, so that glue code changes.
+  (`AuctionCoin` / `CoinAllocation`) that implements them, minted by a `registry` party
+  SEPARATE from the auctioneer, so the sample is self-contained without making the
+  auctioneer the issuer. On a real network you swap in the Amulet (Canton Coin)
+  registry. The auctioneer never mints or moves coins directly: it locks a bid's funds
+  (`LockForBid`) and forwards proceeds (`TransferTo`) through the coin's own
+  registry-authorized choices, and settles through the standard `Allocation`. Our
+  registry is still minimal (single instrument, no fees), but the issuer/operator split
+  is the real one, so porting to Amulet changes the registry, not the auction.
 - **Discovery.** Here the auctioneer is handed the bid `ContractId`s; production
   discovers them off-ledger by querying the Active Contract Set with
   [PQS](https://docs.digitalasset.com/build/3.4/sdlc-howtos/applications/develop/pqs/index.html),
