@@ -26,10 +26,12 @@ pragma solidity 0.8.35;
 ///
 /// @dev    Known limitations of commit/reveal (inherent to the pattern, not bugs;
 ///         the Daml version sidesteps them by construction):
-///         - Forfeited deposits are trapped FOREVER. A bidder who never reveals,
+///         - Forfeiture is permanent and indiscriminate. A bidder who never reveals,
 ///           even an honest one whose reveal tx fails for gas or timing reasons,
-///           loses their entire deposit; the ETH stays locked in the contract with
-///           no recovery path (test_NonRevealerForfeitsDeposit asserts exactly this).
+///           loses their entire deposit with no recovery path. auctionEnd routes the
+///           forfeited amount to the beneficiary rather than trapping it in the
+///           contract, but the bidder still cannot get it back (that is the glue that
+///           keeps the sealed phase binding).
 ///         - Last-revealer advantage. Bids become public as they are revealed, so a
 ///           bidder revealing last can read the standing bids and decide whether to
 ///           reveal at all. Deposits blunt this but cannot remove the informational
@@ -62,6 +64,15 @@ contract SealedBidAuction {
     /// @dev Pull-payment ledger: refunds and outbid amounts accrue here and are
     ///      withdrawn explicitly, never pushed (reentrancy-safe).
     mapping(address => uint256) public pendingReturns;
+
+    /// @dev Deposit accounting. Every committed wei is tracked in `totalDeposited`;
+    ///      every wei credited to someone (a refund, an outbid amount, or the winning
+    ///      bid) bumps `totalAccounted`. At close, the gap, which is exactly the
+    ///      deposits of bidders who committed but never revealed, is routed to the
+    ///      beneficiary rather than trapped. These are tracked totals, never
+    ///      address(this).balance, so force-sent ETH can never be swept out.
+    uint256 public totalDeposited;
+    uint256 public totalAccounted;
 
     event BidCommitted(address indexed bidder, bytes32 blindedBid, uint256 deposit);
     event BidRevealed(address indexed bidder, uint256 value, bool isHighest);
@@ -109,8 +120,8 @@ contract SealedBidAuction {
     /// @notice COMMIT phase. Submit keccak256(abi.encodePacked(value, secret, msg.sender)).
     /// @dev Send a deposit >= the value you intend to bid. If you later reveal a
     ///      value larger than your deposit, the bid is treated as invalid. If you
-    ///      never reveal, your deposit stays locked forever; this forfeiture is
-    ///      the economic glue that makes the scheme binding.
+    ///      never reveal, your deposit is forfeited to the beneficiary at auctionEnd;
+    ///      this forfeiture is the economic glue that makes the scheme binding.
     function commit(bytes32 blindedBid) external payable onlyBefore(biddingEnd) {
         // bytes32(0) is the "no bid yet" sentinel for this mapping, so a zero
         // commitment must be rejected, otherwise it would slip past the
@@ -119,6 +130,7 @@ contract SealedBidAuction {
         if (blindedBid == bytes32(0)) revert EmptyCommitment();
         if (bids[msg.sender].blindedBid != bytes32(0)) revert AlreadyCommitted();
         bids[msg.sender] = Bid({blindedBid: blindedBid, deposit: msg.value, revealed: false});
+        totalDeposited += msg.value;
         emit BidCommitted(msg.sender, blindedBid, msg.value);
     }
 
@@ -143,6 +155,7 @@ contract SealedBidAuction {
             // The previous leader is now outbid: make their locked value refundable.
             if (highestBidder != address(0)) {
                 pendingReturns[highestBidder] += highestBid;
+                totalAccounted += highestBid;
             }
             highestBid = value;
             highestBidder = msg.sender;
@@ -151,6 +164,7 @@ contract SealedBidAuction {
         }
         if (refund > 0) {
             pendingReturns[msg.sender] += refund;
+            totalAccounted += refund;
         }
         emit BidRevealed(msg.sender, value, isHighest);
     }
@@ -169,7 +183,8 @@ contract SealedBidAuction {
         }
     }
 
-    /// @notice Close the auction. The winning bid is credited to the beneficiary's
+    /// @notice Close the auction. The winning bid, plus any deposits forfeited by
+    ///         committers who never revealed, is credited to the beneficiary's
     ///         pull-payment balance (collected via withdraw), never pushed. A
     ///         beneficiary that reverts on receive can no longer brick auctionEnd
     ///         or trap the winning funds.
@@ -185,6 +200,16 @@ contract SealedBidAuction {
         emit AuctionEnded(highestBidder, highestBid);
         if (highestBidder != address(0)) {
             pendingReturns[beneficiary] += highestBid;
+            totalAccounted += highestBid;
+        }
+        // Route forfeited deposits (committed but never revealed) to the beneficiary
+        // instead of trapping them. The bidder still loses the deposit, so the sealed
+        // phase stays binding, but the funds are not burned. Computed from tracked
+        // totals, never address(this).balance, so force-sent ETH cannot be swept.
+        uint256 forfeited = totalDeposited - totalAccounted;
+        if (forfeited > 0) {
+            pendingReturns[beneficiary] += forfeited;
+            totalAccounted += forfeited;
         }
     }
 

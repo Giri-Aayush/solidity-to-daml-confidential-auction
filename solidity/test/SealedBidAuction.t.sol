@@ -178,22 +178,52 @@ contract SealedBidAuctionTest is Test {
         auction.reveal(1 ether, sA);
     }
 
-    /// A bidder who commits but never reveals forfeits their locked deposit,
-    /// the economic mechanism that keeps the sealed phase honest.
-    function test_NonRevealerForfeitsDeposit() public {
+    /// A bidder who commits but never reveals forfeits their deposit, the economic
+    /// mechanism that keeps the sealed phase honest. The forfeited amount is routed to
+    /// the beneficiary at auctionEnd rather than trapped in the contract forever.
+    function test_NonRevealerForfeitGoesToBeneficiary() public {
         bytes32 sA = keccak256("alice-secret");
         _commit(alice, 7 ether, sA, 7 ether); // commits, then ghosts
 
         vm.warp(block.timestamp + BIDDING_TIME + REVEAL_TIME);
         auction.auctionEnd();
 
-        // Alice never revealed: nothing is owed to her, and the 7 ether is
-        // actually trapped in the contract (the intended forfeiture).
-        assertEq(auction.pendingReturns(alice), 0);
+        // Alice never revealed: nothing is owed to her, but the 7 ether is no longer
+        // trapped; a winner-less close still forfeits it, now to the beneficiary.
+        assertEq(auction.pendingReturns(alice), 0, "non-revealer is owed nothing");
         assertEq(auction.highestBidder(), address(0));
-        assertEq(address(auction).balance, 7 ether, "forfeited deposit stays in the contract");
-        assertEq(auction.pendingReturns(beneficiary), 0, "no winner, nothing credited to beneficiary");
-        assertEq(beneficiary.balance, 0);
+        assertEq(auction.pendingReturns(beneficiary), 7 ether, "forfeit routed to beneficiary");
+
+        uint256 before = beneficiary.balance;
+        vm.prank(beneficiary);
+        auction.withdraw();
+        assertEq(beneficiary.balance, before + 7 ether, "beneficiary withdraws the forfeit");
+        assertEq(address(auction).balance, 0, "nothing trapped after withdrawal");
+    }
+
+    /// With both a winner and a no-show, the beneficiary receives the winning bid PLUS
+    /// the forfeited deposit. ETH force-sent to the contract is never swept out, since
+    /// the forfeit is computed from tracked deposit totals, not the contract balance.
+    function test_ForfeitWithWinnerAndForceSendIgnored() public {
+        bytes32 sB = keccak256("bob-secret");
+        bytes32 sC = keccak256("carol-secret");
+        _commit(bob, 5 ether, sB, 5 ether); // reveals and wins
+        _commit(carol, 3 ether, sC, 3 ether); // commits, then ghosts
+
+        // Force 9 ether into the contract (as selfdestruct/coinbase would).
+        vm.deal(address(auction), address(auction).balance + 9 ether);
+
+        vm.warp(block.timestamp + BIDDING_TIME);
+        vm.prank(bob);
+        auction.reveal(5 ether, sB);
+
+        vm.warp(block.timestamp + REVEAL_TIME);
+        auction.auctionEnd();
+
+        assertEq(auction.highestBidder(), bob);
+        // 5 (winning bid) + 3 (Carol's forfeit) = 8, NOT 8 + the 9 force-sent ether.
+        assertEq(auction.pendingReturns(beneficiary), 8 ether, "winning bid plus forfeit only");
+        assertEq(auction.pendingReturns(carol), 0, "ghost is owed nothing");
     }
 
     function test_DoubleRevealReverts() public {
