@@ -7,7 +7,7 @@ const GUIDE = `${REPO}/blob/main/guide/solidity-to-daml.md`;
 const STATS = [
   ["4 → 2", "steps to run it, after one-time setup"],
   ["1 tx", "token-standard dvp settlement"],
-  ["16 + 8", "foundry + daml tests, green"],
+  ["17 + 8", "foundry + daml tests, green"],
   ["0", "lines of privacy plumbing in daml"],
 ];
 

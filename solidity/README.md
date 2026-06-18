@@ -25,8 +25,10 @@ The catch, and the whole reason the Daml version exists:
 - Roughly a third of the contract (hashing, deposits, reveal window, forfeiture)
   is scaffolding that exists *only* because EVM state is public.
 
-A forfeited deposit is **trapped forever**: there is no recovery path, so even an
-honest bidder whose reveal fails (gas, timing) loses their whole deposit. Because
+A forfeited deposit is **lost for good**: an honest bidder whose reveal fails (gas,
+timing) still loses their whole deposit, with no recovery path. It is routed to the
+beneficiary at `auctionEnd` rather than trapped in the contract, but the bidder
+cannot get it back. Because
 reveals are public as they happen, the **last revealer** can watch the standing bids
 and choose whether to reveal, an informational edge deposits only blunt. And the
 hash hides a bid only as well as its inputs: a low-entropy `secret` over a small bid
@@ -40,7 +42,7 @@ and they are exactly what the Daml version avoids.
 forge test -vv
 ```
 
-Sixteen tests cover the happy path, surplus-deposit refunds, under-collateralized
+Seventeen tests cover the happy path, surplus-deposit refunds, under-collateralized
 / wrong-secret / zero-value reveals, rejected empty commitments, the timeline
 guards, ties, non-revealer forfeiture, double-reveal protection, commitment-to-bidder
 binding (reveal front-run resistance), constructor guards (rejecting a zero
