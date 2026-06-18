@@ -23,13 +23,37 @@ fund : Party -> Party -> Decimal -> Script (ContractId AuctionCoin)
 fund registry owner amount =
   submit registry do createCmd AuctionCoin with registry, owner, amount, locked = False
 
--- Issue an invited bidder their single-use right to bid.
-invite : Party -> ContractId Auction -> Party -> Script (ContractId BidRight)
-invite auctioneer auctionCid bidder =
-  submit auctioneer do exerciseCmd auctionCid IssueBidRight with bidder
+-- Create the split auction: the public, roster-free `AuctionTerms` plus the private
+-- `AuctionRoster` (which only the auctioneer ever sees). Returns both cids.
+mkAuction : Party -> Party -> [Party] -> Time -> Script (ContractId AuctionTerms, ContractId AuctionRoster)
+mkAuction auctioneer beneficiary invited settleBy = do
+  terms <- submit auctioneer do
+    createCmd AuctionTerms with
+      auctioneer
+      auctionId = "PAINTING-2026"
+      item = "Rare painting"
+      beneficiary
+      settleBy
+      biddingOpen = True
+  roster <- submit auctioneer do
+    createCmd AuctionRoster with auctioneer, auctionId = "PAINTING-2026", invited
+  pure (terms, roster)
+
+-- Issue an invited bidder their single-use right to bid (off the private roster).
+invite : Party -> ContractId AuctionRoster -> Party -> Script (ContractId BidRight)
+invite auctioneer roster bidder =
+  submit auctioneer do exerciseCmd roster IssueBidRight with bidder
+
+-- Place a bid: the auctioneer discloses the roster-free terms to the bidder, who then
+-- spends their own `BidRight`. The bidder never sees a contract carrying the roster.
+placeBid : Party -> ContractId AuctionTerms -> Party -> ContractId BidRight -> Decimal -> ContractId AuctionCoin -> Script (ContractId Bid)
+placeBid auctioneer terms bidder right amount funds = do
+  Some disc <- queryDisclosure auctioneer terms
+  submit (actAs bidder <> disclose disc) do
+    exerciseCmd right PlaceBid with terms, amount, funds
 
 -- | Sealed bids stay private; settlement is an atomic DvP that pays the
--- beneficiary from the winner and refunds the losers.
+-- beneficiary from the winner and refunds the losers. The roster stays private too.
 privacyAndSettlement : Script ()
 privacyAndSettlement = script do
   auctioneer <- allocateParty "Auctioneer"
@@ -43,24 +67,25 @@ privacyAndSettlement = script do
   bobFunds <- fund auctioneer bob 50.0
   carolFunds <- fund auctioneer carol 40.0
 
-  auctionCid <- submit auctioneer do
-    createCmd Auction with
-      auctioneer
-      auctionId = "PAINTING-2026"
-      item = "Rare painting"
-      beneficiary = seller
-      invited = [alice, bob, carol]
-      settleBy = addRelTime now (hours 24)
-      biddingOpen = True
+  (terms, roster) <- mkAuction auctioneer seller [alice, bob, carol] (addRelTime now (hours 24))
 
-  aliceRight <- invite auctioneer auctionCid alice
-  bobRight <- invite auctioneer auctionCid bob
-  carolRight <- invite auctioneer auctionCid carol
+  aliceRight <- invite auctioneer roster alice
+  bobRight <- invite auctioneer roster bob
+  carolRight <- invite auctioneer roster carol
+
+  -- A15: each bidder sees only their OWN invitation, never the roster, the terms as a
+  -- stakeholder, or each other's rights. (Checked before bidding consumes the rights.)
+  aliceRights <- query @BidRight alice
+  map (\(_, br) -> br.bidder) aliceRights === [alice]
+  aliceRoster <- query @AuctionRoster alice
+  aliceRoster === []
+  aliceTermsView <- query @AuctionTerms alice
+  aliceTermsView === []
 
   -- Each bidder seals a bid and locks the amount as a standard Allocation.
-  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 30.0, funds = aliceFunds, right = aliceRight
-  bobBid <- submit bob do exerciseCmd auctionCid PlaceBid with bidder = bob, amount = 50.0, funds = bobFunds, right = bobRight
-  carolBid <- submit carol do exerciseCmd auctionCid PlaceBid with bidder = carol, amount = 40.0, funds = carolFunds, right = carolRight
+  aliceBid <- placeBid auctioneer terms alice aliceRight 30.0 aliceFunds
+  bobBid <- placeBid auctioneer terms bob bobRight 50.0 bobFunds
+  carolBid <- placeBid auctioneer terms carol carolRight 40.0 carolFunds
 
   -- Privacy: each bidder sees exactly their OWN bid, by content not just count.
   aliceView <- query @Bid alice
@@ -72,10 +97,10 @@ privacyAndSettlement = script do
   auctioneerView <- query @Bid auctioneer
   length auctioneerView === 3
 
-  -- Close bidding, then settle.
-  closedCid <- submit auctioneer do exerciseCmd auctionCid CloseBidding
+  -- Close bidding, then settle (passing the private roster).
+  closedTerms <- submit auctioneer do exerciseCmd terms CloseBidding
   resultCid <- submit auctioneer do
-    exerciseCmd closedCid Settle with bidCids = [aliceBid, bobBid, carolBid]
+    exerciseCmd closedTerms Settle with bidCids = [aliceBid, bobBid, carolBid]; roster
 
   Some result <- queryContractId auctioneer resultCid
   result.winner === bob
@@ -119,29 +144,24 @@ oneBidPerBidder = script do
 
   firstFunds <- fund auctioneer alice 30.0
   secondFunds <- fund auctioneer alice 30.0
-  auctionCid <- submit auctioneer do
-    createCmd Auction with
-      auctioneer
-      auctionId = "PAINTING-2026"
-      item = "Rare painting"
-      beneficiary = seller
-      invited = [alice]
-      settleBy = addRelTime now (hours 24)
-      biddingOpen = True
+  (terms, roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 24))
 
-  aliceRight <- invite auctioneer auctionCid alice
+  aliceRight <- invite auctioneer roster alice
   -- First bid consumes the right.
-  firstBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 20.0, funds = firstFunds, right = aliceRight
+  firstBid <- placeBid auctioneer terms alice aliceRight 20.0 firstFunds
   -- Reusing the now-spent right is rejected by the ledger (one bid per right).
-  alice `submitMustFail` exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 25.0, funds = secondFunds, right = aliceRight
+  Some disc <- queryDisclosure auctioneer terms
+  (actAs alice <> disclose disc) `submitMustFail`
+    exerciseCmd aliceRight PlaceBid with terms, amount = 25.0, funds = secondFunds
 
   -- The auctioneer CAN mint a second right for the same bidder (IssueBidRight does
   -- not prevent it), so Alice places a second, distinct bid.
-  aliceRight2 <- invite auctioneer auctionCid alice
-  secondBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 25.0, funds = secondFunds, right = aliceRight2
+  aliceRight2 <- invite auctioneer roster alice
+  secondBid <- placeBid auctioneer terms alice aliceRight2 25.0 secondFunds
   -- But settlement refuses to count two bids from one bidder.
-  closedCid <- submit auctioneer do exerciseCmd auctionCid CloseBidding
-  auctioneer `submitMustFail` exerciseCmd closedCid Settle with bidCids = [firstBid, secondBid]
+  closedTerms <- submit auctioneer do exerciseCmd terms CloseBidding
+  auctioneer `submitMustFail`
+    exerciseCmd closedTerms Settle with bidCids = [firstBid, secondBid]; roster
 
 -- | A party who was not invited cannot get a right, nor bid with someone else's.
 nonInvitedCannotBid : Script ()
@@ -153,21 +173,17 @@ nonInvitedCannotBid = script do
   now <- getTime
 
   malloryFunds <- fund auctioneer mallory 999.0
-  auctionCid <- submit auctioneer do
-    createCmd Auction with
-      auctioneer
-      auctionId = "PAINTING-2026"
-      item = "Rare painting"
-      beneficiary = seller
-      invited = [alice]
-      settleBy = addRelTime now (hours 24)
-      biddingOpen = True
+  (terms, roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 24))
 
-  -- A non-invited party cannot be issued a right.
-  auctioneer `submitMustFail` exerciseCmd auctionCid IssueBidRight with bidder = mallory
-  -- Even handed an invited bidder's right, a non-invited bid is rejected.
-  aliceRight <- invite auctioneer auctionCid alice
-  mallory `submitMustFail` exerciseCmd auctionCid PlaceBid with bidder = mallory, amount = 999.0, funds = malloryFunds, right = aliceRight
+  -- A non-invited party cannot be issued a right (the roster gates issuance).
+  auctioneer `submitMustFail` exerciseCmd roster IssueBidRight with bidder = mallory
+  -- Even handed an invited bidder's right, a non-invited party cannot bid: PlaceBid
+  -- is controlled by the right's named bidder, so Mallory is not the controller.
+  aliceRight <- invite auctioneer roster alice
+  Some discT <- queryDisclosure auctioneer terms
+  Some discR <- queryDisclosure auctioneer aliceRight
+  (actAs mallory <> disclose discT <> disclose discR) `submitMustFail`
+    exerciseCmd aliceRight PlaceBid with terms, amount = 999.0, funds = malloryFunds
 
 -- | Once the auctioneer closes bidding, late bids are rejected.
 closedBiddingRejectsLateBids : Script ()
@@ -178,19 +194,13 @@ closedBiddingRejectsLateBids = script do
   now <- getTime
 
   aliceFunds <- fund auctioneer alice 10.0
-  auctionCid <- submit auctioneer do
-    createCmd Auction with
-      auctioneer
-      auctionId = "PAINTING-2026"
-      item = "Rare painting"
-      beneficiary = seller
-      invited = [alice]
-      settleBy = addRelTime now (hours 24)
-      biddingOpen = True
+  (terms, roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 24))
 
-  aliceRight <- invite auctioneer auctionCid alice
-  closedCid <- submit auctioneer do exerciseCmd auctionCid CloseBidding
-  alice `submitMustFail` exerciseCmd closedCid PlaceBid with bidder = alice, amount = 10.0, funds = aliceFunds, right = aliceRight
+  aliceRight <- invite auctioneer roster alice
+  closedTerms <- submit auctioneer do exerciseCmd terms CloseBidding
+  Some disc <- queryDisclosure auctioneer closedTerms
+  (actAs alice <> disclose disc) `submitMustFail`
+    exerciseCmd aliceRight PlaceBid with terms = closedTerms, amount = 10.0, funds = aliceFunds
 
 -- | Settlement is refused while bidding is still open.
 cannotSettleWhileOpen : Script ()
@@ -201,19 +211,11 @@ cannotSettleWhileOpen = script do
   now <- getTime
 
   aliceFunds <- fund auctioneer alice 10.0
-  auctionCid <- submit auctioneer do
-    createCmd Auction with
-      auctioneer
-      auctionId = "PAINTING-2026"
-      item = "Rare painting"
-      beneficiary = seller
-      invited = [alice]
-      settleBy = addRelTime now (hours 24)
-      biddingOpen = True
+  (terms, roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 24))
 
-  aliceRight <- invite auctioneer auctionCid alice
-  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 10.0, funds = aliceFunds, right = aliceRight
-  auctioneer `submitMustFail` exerciseCmd auctionCid Settle with bidCids = [aliceBid]
+  aliceRight <- invite auctioneer roster alice
+  aliceBid <- placeBid auctioneer terms alice aliceRight 10.0 aliceFunds
+  auctioneer `submitMustFail` exerciseCmd terms Settle with bidCids = [aliceBid]; roster
 
 -- | Settlement after the deadline is rejected (time-bounded DvP).
 settlementRespectsDeadline : Script ()
@@ -224,26 +226,18 @@ settlementRespectsDeadline = script do
   now <- getTime
 
   aliceFunds <- fund auctioneer alice 10.0
-  auctionCid <- submit auctioneer do
-    createCmd Auction with
-      auctioneer
-      auctionId = "PAINTING-2026"
-      item = "Rare painting"
-      beneficiary = seller
-      invited = [alice]
-      settleBy = addRelTime now (hours 1)
-      biddingOpen = True
+  (terms, roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 1))
 
-  aliceRight <- invite auctioneer auctionCid alice
-  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 10.0, funds = aliceFunds, right = aliceRight
-  closedCid <- submit auctioneer do exerciseCmd auctionCid CloseBidding
+  aliceRight <- invite auctioneer roster alice
+  aliceBid <- placeBid auctioneer terms alice aliceRight 10.0 aliceFunds
+  closedTerms <- submit auctioneer do exerciseCmd terms CloseBidding
 
   passTime (hours 2) -- advance past settleBy
-  auctioneer `submitMustFail` exerciseCmd closedCid Settle with bidCids = [aliceBid]
+  auctioneer `submitMustFail` exerciseCmd closedTerms Settle with bidCids = [aliceBid]; roster
 
--- | Explicit disclosure: a party who is not a stakeholder can still use a
--- contract as a command input if it is disclosed to them. Here a prospective
--- bidder reads the auction terms without being an observer.
+-- | Explicit disclosure: a party who is not a stakeholder can still use a contract as
+-- a command input if it is disclosed to them. Here a prospective bidder reads the
+-- public terms without being an observer (and the roster stays hidden regardless).
 explicitDisclosure : Script ()
 explicitDisclosure = script do
   auctioneer <- allocateParty "Auctioneer"
@@ -252,30 +246,22 @@ explicitDisclosure = script do
   dave <- allocateParty "Dave" -- a prospective bidder, not invited, not an observer
   now <- getTime
 
-  auctionCid <- submit auctioneer do
-    createCmd Auction with
-      auctioneer
-      auctionId = "PAINTING-2026"
-      item = "Rare painting"
-      beneficiary = seller
-      invited = [alice]
-      settleBy = addRelTime now (hours 24)
-      biddingOpen = True
+  (terms, _roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 24))
 
-  -- Dave is not a stakeholder, so the auction is not on his ledger at all.
-  daveSees <- query @Auction dave
+  -- Dave is not a stakeholder, so the terms are not on his ledger at all.
+  daveSees <- query @AuctionTerms dave
   daveSees === []
   -- Without the contract, Dave cannot reference it in a command.
-  dave `submitMustFail` exerciseCmd auctionCid FetchTerms with viewer = dave
+  dave `submitMustFail` exerciseCmd terms FetchTerms with viewer = dave
 
-  -- The auctioneer discloses the auction; now Dave can read its terms using the
-  -- disclosed contract, still without being added to `invited`.
-  Some disclosed <- queryDisclosure auctioneer auctionCid
+  -- The auctioneer discloses the terms; now Dave can read them using the disclosed
+  -- contract, still without becoming a stakeholder.
+  Some disclosed <- queryDisclosure auctioneer terms
   (item, _) <- submit (actAs dave <> disclose disclosed) do
-    exerciseCmd auctionCid FetchTerms with viewer = dave
+    exerciseCmd terms FetchTerms with viewer = dave
   item === "Rare painting"
 
-  stillHidden <- query @Auction dave
+  stillHidden <- query @AuctionTerms dave
   stillHidden === []
 
 -- | Liveness: once the settlement deadline passes, a bidder can reclaim their own
@@ -289,18 +275,10 @@ deadlineReclaim = script do
   now <- getTime
 
   aliceFunds <- fund auctioneer alice 30.0
-  auctionCid <- submit auctioneer do
-    createCmd Auction with
-      auctioneer
-      auctionId = "PAINTING-2026"
-      item = "Rare painting"
-      beneficiary = seller
-      invited = [alice]
-      settleBy = addRelTime now (hours 1)
-      biddingOpen = True
+  (terms, roster) <- mkAuction auctioneer seller [alice] (addRelTime now (hours 1))
 
-  aliceRight <- invite auctioneer auctionCid alice
-  aliceBid <- submit alice do exerciseCmd auctionCid PlaceBid with bidder = alice, amount = 30.0, funds = aliceFunds, right = aliceRight
+  aliceRight <- invite auctioneer roster alice
+  aliceBid <- placeBid auctioneer terms alice aliceRight 30.0 aliceFunds
 
   -- Her 30 is locked behind the allocation; she holds no free coin right now.
   locked <- query @AuctionCoin alice

@@ -49,11 +49,13 @@ flowchart TD
     AUC([Auctioneer]):::party
     BID([Bidder]):::party
 
-    AUC -->|create| AU["Auction<br/>sig: auctioneer | obs: invited"]:::tmpl
-    AU -->|IssueBidRight| BR["BidRight<br/>single-use, one per bidder"]:::tmpl
+    AUC -->|create| AT["AuctionTerms<br/>sig: auctioneer, no observers<br/>roster-free public terms"]:::tmpl
+    AUC -->|create| AR["AuctionRoster<br/>sig: auctioneer, private invited list"]:::tmpl
+    AR -->|IssueBidRight| BR["BidRight<br/>per-bidder, single-use<br/>obs: that one bidder"]:::tmpl
 
-    BID -->|PlaceBid| PB(["PlaceBid: one transaction"])
+    BID -->|PlaceBid spends the right| PB(["PlaceBid: one transaction"])
     BR -.->|spent| PB
+    AT -.->|disclosed| PB
     PB --> CO["AuctionCoin (locked)<br/>CIP-0056 Holding"]:::tmpl
     PB --> BD["Bid<br/>sig: auctioneer + bidder<br/>no one else can see it"]:::tmpl
     CO --> AL["CoinAllocation<br/>CIP-0056 Allocation = DvP"]:::tmpl
@@ -61,6 +63,7 @@ flowchart TD
 
     AUC ==>|CloseBidding, then Settle| ST{{"Settle: highest bid wins<br/>one atomic tx"}}
     AL -.-> ST
+    AR -.->|roster check| ST
     ST -->|winner: AwardToBeneficiary| SE([Seller paid])
     ST -->|losers: Refund| RF([Losers refunded])
     ST --> RS["AuctionResult<br/>obs: winner only"]:::tmpl
@@ -98,13 +101,13 @@ Keep this table next to you while reading both contracts.
 | Solidity / EVM | Daml / Canton | Notes |
 |---|---|---|
 | Contract at an address | `template` + a contract instance (a `ContractId`) | A template is the code; each created contract is an immutable instance. |
-| Mutable storage variables | Immutable contracts; "update" = archive old + create new | There is no in-place mutation. `CloseBidding` *recreates* the Auction with `biddingOpen = False`. |
+| Mutable storage variables | Immutable contracts; "update" = archive old + create new | There is no in-place mutation. `CloseBidding` *recreates* the `AuctionTerms` with `biddingOpen = False`. |
 | `mapping(address => Bid) bids` | Many separate `Bid` contracts, one per bidder | No shared map; each bid is its own confidential contract. |
 | `msg.sender` | `controller` of a choice | The party exercising a choice is authenticated by the ledger, not read from a transaction field. |
 | `require(msg.sender == owner)` | `controller auctioneer` on the choice | Authorization is declared, not checked imperatively. |
 | `require(cond, "msg")` | `assertMsg "msg" cond` | Same idea for *business-rule* checks (e.g. "bid must be positive"). |
 | `function` (mutating) | consuming `choice` | Archives the contract it's exercised on, optionally creating successors. |
-| `view`/`pure function` | `nonconsuming choice` or off-ledger `query` | `PlaceBid` is nonconsuming so the Auction survives repeated bids. |
+| `view`/`pure function` | `nonconsuming choice` or off-ledger `query` | `FetchTerms` is nonconsuming, so the terms survive repeated reads (`PlaceBid` is consuming: it spends the bidder's one `BidRight`). |
 | `modifier onlyOwner` | choice `controller` + `signatory` | Who can act is part of the choice's type, enforced by the engine. |
 | `event Foo(...)` / `emit` | the transaction record itself + `observer`s | Stakeholders see the transaction; there's no separate event log to subscribe to for state. |
 | `block.timestamp` deadlines | application-layer timing / `getTime` in scripts | Canton has time, but our Daml model gates with an explicit `biddingOpen` flag the auctioneer flips. |
@@ -130,21 +133,23 @@ In Daml, authorization is *part of the type of the choice*. You cannot exercise
 cannot exist unless both its signatories authorized it:
 
 ```daml
-nonconsuming choice PlaceBid : ContractId Bid
-  with bidder : Party; amount : Decimal
-  controller bidder                       -- only `bidder` can do this
+choice PlaceBid : ContractId Bid          -- a consuming choice ON the bidder's BidRight
+  with terms : ContractId AuctionTerms; amount : Decimal
+  controller bidder                       -- only `bidder`, the right's holder, can do this
   do
-    assertMsg "bidder must be invited" (bidder `elem` invited)
-    create Bid with auctioneer, auctionId, bidder, item, amount   -- signed by [auctioneer, bidder]
+    t <- fetch terms                       -- roster-free terms, handed over by disclosure
+    create Bid with auctioneer, auctionId, bidder, item = t.item, amount   -- signed by [auctioneer, bidder]
 ```
 
-> Simplified to the authorization essentials. The real `PlaceBid` also takes the
-> bidder's `funds` and a single-use `BidRight`, and signs a `Bid` with a few more
-> fields (see [`ConfidentialAuction.daml`](../daml/daml/ConfidentialAuction.daml) for
-> the full shape). What matters here is the controller/signatory relationship.
+> Simplified to the authorization essentials. The real `PlaceBid` lives on the
+> per-bidder `BidRight` (auctioneer-signed, bidder-controlled), takes the bidder's
+> `funds`, reads the live terms from a disclosed `AuctionTerms`, and signs a `Bid`
+> with a few more fields (see
+> [`ConfidentialAuction.daml`](../daml/daml/ConfidentialAuction.daml) for the full
+> shape). What matters here is the controller/signatory relationship.
 
 The subtle, powerful part: the choice body runs with the **authority of the
-Auction's signatory (the auctioneer) plus the controller (the bidder)**, exactly
+`BidRight`'s signatory (the auctioneer) plus the controller (the bidder)**, exactly
 the two signatures the `Bid` needs. This *delegated authority* is how a single
 bidder transaction can create a contract co-signed by the auctioneer, without the
 auctioneer being online. There is no Solidity equivalent; it's the Daml feature
@@ -205,19 +210,20 @@ means there's no global set to iterate. So winner selection works in two moves:
    belongs to the auction, picks the max, and settles the funds atomically:
 
 ```daml
-choice Settle : ContractId AuctionResult
-  with bidCids : [ContractId Bid]
+choice Settle : ContractId AuctionResult          -- lives on AuctionTerms
+  with bidCids : [ContractId Bid]; roster : ContractId AuctionRoster
   controller auctioneer
   do
     assertMsg "close bidding before settling" (not biddingOpen)
     now <- getTime
     assertMsg "the settlement window has passed" (now <= settleBy)
+    r <- fetch roster                              -- the auctioneer's private invited list
     -- de-duplicate the caller's list so a repeated id can't double-spend a bid
     let uniqueCids = foldl (\seen c -> if c `elem` seen then seen else seen <> [c]) [] bidCids
     bids <- forA uniqueCids \cid -> do
       bid <- fetch cid
-      assertMsg "bid does not belong to this auction"
-        (bid.auctioneer == auctioneer && bid.auctionId == auctionId && bid.item == item)
+      assertMsg "bid belongs to this auction, from an invited bidder"
+        (bid.auctioneer == auctioneer && bid.auctionId == auctionId && bid.item == item && bid.bidder `elem` r.invited)
       pure (cid, bid)
     case sortOn (\(_, bid) -> negate bid.amount) bids of
       [] -> abort "cannot settle an auction with no bids"
@@ -286,10 +292,11 @@ Honesty matters more than a clean story:
   [PQS](https://docs.digitalasset.com/build/3.4/sdlc-howtos/applications/develop/pqs/index.html),
   since Daml 3 has no *unique* contract keys to look bids up by.
 - **Identity & uniqueness.** `auctionId` is a plain `Text`; a production app would use
-  a guaranteed-unique id. "One bid per bidder," though, *is* enforced on-ledger: the
-  auctioneer issues each invited bidder a single-use `BidRight` that `PlaceBid`
-  consumes, so a second bid finds no right left to spend (Daml 3 has no unique keys,
-  so this archived-on-use right plays the role a key would).
+  a guaranteed-unique id. The single-use `BidRight` gives one bid per *right*
+  on-ledger (`PlaceBid` consumes it). One bid per *bidder* rests on the auctioneer
+  issuing one right each (Daml 3 has no unique keys), and `Settle` re-checks it against
+  the private `AuctionRoster`, which no bidder can see, so the participant set never
+  leaks either.
 - **Auctioneer liveness.** The refunds are atomic, but they only happen once the
   auctioneer settles: `Settle` requires `now <= settleBy` and the auctioneer chooses
   which bids to include. A bidder is not at its mercy, though: once `settleBy` passes,
