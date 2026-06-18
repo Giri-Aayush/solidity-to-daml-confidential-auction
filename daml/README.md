@@ -27,10 +27,11 @@ minimal registry that implements them so the sample builds and runs offline:
   consumes a single-use `BidRight`, locks the bid amount as a standard `Allocation`,
   and records a `Bid`; `Settle` executes the winning allocation and cancels the
   losers in one transaction, time-bounded by `settleBy`.
-- **`BidRight`**: a single-use right issued per invited bidder. `PlaceBid` consumes
-  it, so a second bid has no right left to spend: this is the on-ledger
-  one-bid-per-bidder guarantee (Canton has no *unique* contract keys to do it with -
-  3.5 added non-unique keys, but those can't enforce uniqueness).
+- **`BidRight`**: a single-use right the auctioneer issues to a bidder. `PlaceBid`
+  consumes it, so it is good for exactly one bid: one bid per *right*, enforced
+  on-ledger. One bid per *bidder* then holds as long as the auctioneer issues one
+  right each (Canton has no *unique* contract keys to enforce that; 3.5 added
+  non-unique keys, but those can't enforce uniqueness).
 - **`Bid`**: signed by the auctioneer *and one bidder*, and nobody else. That
   two-party signatory set is the entire privacy mechanism. Co-signing is also what
   lets the auctioneer settle while the bidder is offline: the bidder's authority,

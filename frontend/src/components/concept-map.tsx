@@ -1,6 +1,6 @@
 const ROWS: [string, string, string][] = [
   ["mapping(address => Bid)", "one Bid contract per bidder", "no shared map to read"],
-  ["AlreadyCommitted guard", "single-use BidRight", "one bid per bidder, on-ledger"],
+  ["AlreadyCommitted guard", "single-use BidRight", "one bid per right, on-ledger"],
   ["msg.sender", "choice controller", "authenticated by the ledger"],
   ["require(msg.sender == owner)", "controller / signatory", "authz is part of the type"],
   ["deposit in ether (msg.value)", "CIP-0056 Holding", "value is a standard token"],
