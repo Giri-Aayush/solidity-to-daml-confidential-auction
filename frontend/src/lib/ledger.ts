@@ -26,6 +26,7 @@ export interface Bid {
   secret: string;
   commit: string; // illustrative commitment, computed once at creation
   revealed: boolean; // EVM only: a committed bid becomes public at reveal
+  revealSeq?: number; // EVM only: order this bid was revealed; ties go to the first revealer, as the contract resolves them
 }
 
 // template AuctionResult  →  signatory auctioneer; observer winner
@@ -71,7 +72,12 @@ export function resultVisibleTo(
   return viewer === AUCTIONEER || viewer === result.winner;
 }
 
-/** Highest bid wins (first-price). Mirrors the Auction `Settle` choice. */
+/**
+ * Highest bid wins (first-price). Mirrors the Auction `Settle` choice. The sort is
+ * stable, so equal top bids keep their input order: callers pass EVM bids in reveal
+ * order (and Canton bids in submission order), so a tie goes to the first revealer,
+ * exactly as the Solidity contract's strict `value > highestBid` check resolves it.
+ */
 export function settle(bids: Bid[]): AuctionResult | null {
   if (bids.length === 0) return null;
   const top = [...bids].sort((a, b) => b.amount - a.amount)[0];

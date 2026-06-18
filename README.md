@@ -22,8 +22,8 @@ with a commit/reveal scheme, deposits, and a forfeiture rule. On Canton, a bid i
 shared only with the auctioneer and the bidder, so the commit/reveal machinery
 disappears and settlement collapses to one atomic delivery-versus-payment. (Daml
 has no native currency, so value is held as the Canton Network Token Standard's
-`Holding` and moved through its `Allocation` interface; the two contracts end up a
-similar length but spend their lines very differently.)
+`Holding` and moved through its `Allocation` interface; the Daml version runs more
+than twice the length but spends those lines very differently.)
 
 > Built as a developer-education artifact for OpenZeppelin's Canton stack: a
 > worked translation of a familiar EVM pattern into Canton's Daml-based,
@@ -76,8 +76,9 @@ auctioneer and that bidder), so no other party's ledger ever contains it. Privac
 is a property of the ledger rather than a workaround, and the losing bids are never
 disclosed at all. Funds are held as the Canton Network Token Standard's `Holding`
 and settled through its `Allocation` interface, so the winner pays the seller and
-losers are refunded in one atomic delivery-versus-payment; one bid per bidder is
-enforced on-ledger by a single-use right, not an application check. The Daml tests
+losers are refunded in one atomic delivery-versus-payment; a single-use right gives
+one bid per right on-ledger, with one bid per bidder resting on the auctioneer
+issuing one right each. The Daml tests
 prove the privacy claim by content (each bidder sees exactly their own bid, the
 auctioneer sees all) and run unchanged on the in-memory ledger and on a real Canton
 participant node.

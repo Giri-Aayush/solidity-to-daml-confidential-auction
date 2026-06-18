@@ -61,11 +61,20 @@ export function LedgerDemo() {
   }
 
   function revealBid(p: Party) {
-    setBids((b) => b.map((x) => (x.bidder === p ? { ...x, revealed: true } : x)));
+    // Stamp the reveal order so ties go to the first revealer, as the contract does.
+    setBids((b) => {
+      const next = b.reduce((m, x) => Math.max(m, x.revealSeq ?? 0), 0) + 1;
+      return b.map((x) => (x.bidder === p ? { ...x, revealed: true, revealSeq: next } : x));
+    });
   }
 
   function doSettle() {
-    setResult(settle(mode === "evm" ? revealed : bids));
+    // EVM: settle in reveal order so a tie is broken by who revealed first, matching
+    // the contract (Canton has no reveal step, so submission order stands).
+    const evmRevealed = [...revealed].sort(
+      (a, b) => (a.revealSeq ?? 0) - (b.revealSeq ?? 0),
+    );
+    setResult(settle(mode === "evm" ? evmRevealed : bids));
   }
 
   function reset() {
@@ -80,7 +89,7 @@ export function LedgerDemo() {
     if (!m || m === mode) return;
     setMode(m);
     setResult(null);
-    setBids((b) => b.map((x) => ({ ...x, revealed: false })));
+    setBids((b) => b.map((x) => ({ ...x, revealed: false, revealSeq: undefined })));
   }
 
   return (
@@ -128,7 +137,14 @@ export function LedgerDemo() {
                   variant="outline"
                   size="sm"
                   className="border-signal/50 font-mono text-xs uppercase tracking-wider text-signal hover:bg-signal/10 hover:text-signal"
-                  onClick={() => setBids((b) => b.map((x) => ({ ...x, revealed: true })))}
+                  onClick={() =>
+                    setBids((b) => {
+                      let n = b.reduce((m, x) => Math.max(m, x.revealSeq ?? 0), 0);
+                      return b.map((x) =>
+                        x.revealed ? x : { ...x, revealed: true, revealSeq: ++n },
+                      );
+                    })
+                  }
                 >
                   Reveal all ↦
                 </Button>
