@@ -142,6 +142,11 @@ WHERE t.entity_name = 'Bid';
   [PQS](https://docs.digitalasset.com/build/3.4/component-howtos/pqs/index.html)
   (`dpm pqs`, a PostgreSQL view of the ledger), since Canton has no unique-key lookups.
 - *Identity:* `auctionId` is a plain `Text`; production uses a guaranteed-unique id.
+- *Roster privacy:* the invited bidders all observe one shared `Auction`, so its
+  `invited` list is visible to every one of them. Bid amounts stay private; the
+  participant set does not. Production hides the roster too, with a per-bidder
+  invitation contract (each observed only by its own bidder) and an auctioneer-only
+  roster, so no shared contract carries the full list. Kept simple here on purpose.
 - *Divulgence:* a non-stakeholder never receives a `Bid`, so it cannot see one. A
   party can learn a contract by *witnessing* a transaction that uses it, but no
   bidder witnesses another's bid here; explicit disclosure (the `explicitDisclosure`
