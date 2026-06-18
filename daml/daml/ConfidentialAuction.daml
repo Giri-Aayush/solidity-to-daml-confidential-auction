@@ -57,7 +57,8 @@ import Splice.Api.Token.MetadataV1
 --                       the contract. There is no in-place storage edit: you archive
 --                       (delete) and create (re-deploy) instead of mutating a field.
 --   nonconsuming choice a choice that does not archive the contract, so it can be
---                       exercised repeatedly (PlaceBid leaves the Auction live).
+--                       exercised repeatedly (IssueBidRight issues many rights from
+--                       the one roster; FetchTerms can be re-read).
 --   controller p        who may exercise a choice: authorization is part of the type,
 --                       not a require(msg.sender == p) you have to remember to write.
 --   archive / create    delete / deploy.
@@ -163,13 +164,13 @@ template CoinAllocation
         refund <- releaseToSender registry spec backing
         pure Allocation_WithdrawResult with senderHoldingCids = [refund]; meta = emptyMetadata
 
--- | A single-use right to bid, issued by the auctioneer to one invited bidder.
--- `PlaceBid` consumes it (the standard "lock by archiving" pattern), so each
--- right is good for exactly one bid. One bid *per bidder* then holds as long as
--- the auctioneer issues exactly one right per bidder: `IssueBidRight` does not
--- enforce that on-ledger (and without contract keys, which Canton 3.x lacks, it
--- cannot cheaply), so the per-bidder property rests on the auctioneer here; a
--- unique contract key would have enforced it against the auctioneer too.
+-- | A single-use right to bid: the bidder's PRIVATE invitation. Signed by the
+-- auctioneer, observed only by that one bidder, so no bidder can see who else was
+-- invited (the A15 roster never touches a contract a bidder holds). `PlaceBid` lives
+-- here, not on the auction, and consumes the right, so it is good for exactly one
+-- bid. One bid *per bidder* then holds as long as the auctioneer issues one right
+-- each: `IssueBidRight` does not enforce that on-ledger (Canton has no unique keys),
+-- so the per-bidder property rests on the auctioneer, and `Settle` re-checks it.
 template BidRight
   with
     auctioneer : Party
@@ -179,72 +180,24 @@ template BidRight
     signatory auctioneer
     observer bidder
 
--- | The coordination contract. The auctioneer owns it; invited bidders are
--- observers, so they can see the auction and bid, but never each other's bids.
---
--- ROSTER CAVEAT (A15): because the invited bidders all observe this one shared
--- `Auction`, its `invited` field is visible to every one of them. Bid *amounts*
--- stay private (those live on the per-bidder `Bid`), but the participant *set*
--- does not. This is a deliberate simplification that keeps the teaching model to a
--- single auction contract the invited bidders bid on. To hide the roster too, a
--- production design gives each bidder a private invitation contract (signatory
--- auctioneer, observer that one bidder) and keeps the roster on an auctioneer-only
--- contract, so no shared contract ever carries the full list.
-template Auction
-  with
-    auctioneer : Party
-    auctionId : Text
-    item : Text
-    beneficiary : Party
-    invited : [Party]
-    settleBy : Time
-    biddingOpen : Bool
-  where
-    signatory auctioneer
-    observer invited
-    ensure auctionId /= ""
-
-    -- | Issue one bidder their single-use right to bid.
-    nonconsuming choice IssueBidRight : ContractId BidRight
+    -- | The bidder spends this right to place a sealed bid. The auction's live terms
+    -- (is bidding open, item, beneficiary, deadline) are read from a disclosed
+    -- `AuctionTerms`: it carries no roster, so the bidder reads what they need to bid
+    -- without ever witnessing a contract that names the other invitees. Authority
+    -- closes as before: this right is auctioneer-signed and bidder-controlled, exactly
+    -- the two signatures the `Bid` and its `Allocation` need.
+    choice PlaceBid : ContractId Bid
       with
-        bidder : Party
-      controller auctioneer
-      do
-        assertMsg "rights can only be issued to invited bidders" (bidder `elem` invited)
-        create BidRight with auctioneer, auctionId, bidder
-
-    -- | Read-only: the public terms of the auction (item and deadline). A
-    -- prospective bidder who is not yet an observer can call this if the
-    -- auctioneer hands them the contract via explicit disclosure (disclosed
-    -- contracts), without being added to the ledger's copy of `invited`.
-    nonconsuming choice FetchTerms : (Text, Time)
-      with
-        viewer : Party
-      controller viewer
-      do pure (item, settleBy)
-
-    -- | A bidder places a sealed bid: it consumes their one-time `BidRight`,
-    -- locks the bid amount from one of their holdings as a token-standard
-    -- `Allocation` (sender = bidder, receiver = the auctioneer/executor), and
-    -- records a `Bid`. The `Bid` is signed by the auctioneer and the bidder
-    -- only, so it is confidential by construction.
-    nonconsuming choice PlaceBid : ContractId Bid
-      with
-        bidder : Party
+        terms : ContractId AuctionTerms
         amount : Decimal
         funds : ContractId AuctionCoin
-        right : ContractId BidRight
-      controller bidder  -- only the bidder can place it; the authz is in the type, no require
+      controller bidder
       do
-        assertMsg "bidder must be invited to this auction" (bidder `elem` invited)
-        assertMsg "bidding is closed" biddingOpen
+        t <- fetch terms
+        assertMsg "bid right does not match these auction terms"
+          (t.auctioneer == auctioneer && t.auctionId == auctionId)
+        assertMsg "bidding is closed" t.biddingOpen
         assertMsg "bid must be positive" (amount > 0.0)
-
-        -- Spend the single-use right: a second bid finds no right to consume.
-        r <- fetch right
-        assertMsg "bid right does not match this auction and bidder"
-          (r.auctioneer == auctioneer && r.auctionId == auctionId && r.bidder == bidder)
-        archive right
 
         -- Take the bidder's coin, split out the bid amount, return any change.
         coin <- fetch funds
@@ -282,10 +235,10 @@ template Auction
                 executor = auctioneer
                 settlementRef = Reference with id = auctionId; cid = None
                 requestedAt = now
-                allocateBefore = settleBy
-                settleBefore = settleBy
+                allocateBefore = t.settleBy
+                settleBefore = t.settleBy
                 meta = emptyMetadata
-              transferLegId = item
+              transferLegId = t.item
               transferLeg = TransferLeg with
                 sender = bidder
                 receiver = auctioneer
@@ -294,19 +247,46 @@ template Auction
                 meta = emptyMetadata
         allocCid <- create CoinAllocation with registry = auctioneer; spec; backing
         create Bid with
-          auctioneer, auctionId, item, bidder, beneficiary, amount, settleBy
+          auctioneer, auctionId, item = t.item, bidder, beneficiary = t.beneficiary, amount, settleBy = t.settleBy
           allocation = toInterfaceContractId @Allocation allocCid
 
-    -- | The auctioneer closes bidding; the reissued Auction rejects late bids.
-    choice CloseBidding : ContractId Auction
+-- | The public terms of the auction, signed by the auctioneer alone. It carries NO
+-- roster and no bidder observes it, so the participant set never leaks. Bidders reach
+-- it only by explicit disclosure (the auctioneer hands it over for `PlaceBid` and
+-- `FetchTerms`); the invited roster lives privately on `AuctionRoster`. This split is
+-- the A15 fix: a single shared contract observed by every bidder would expose its
+-- observer set, so the roster cannot live on anything a bidder sees.
+template AuctionTerms
+  with
+    auctioneer : Party
+    auctionId : Text
+    item : Text
+    beneficiary : Party
+    settleBy : Time
+    biddingOpen : Bool
+  where
+    signatory auctioneer
+    ensure auctionId /= ""
+
+    -- | Read-only: the public terms (item and deadline). A party who is not a
+    -- stakeholder can call this against a disclosed copy, learning only these public
+    -- terms, never the roster.
+    nonconsuming choice FetchTerms : (Text, Time)
+      with
+        viewer : Party
+      controller viewer
+      do pure (item, settleBy)
+
+    -- | The auctioneer closes bidding; the reissued terms reject late bids.
+    choice CloseBidding : ContractId AuctionTerms
       controller auctioneer
       do create this with biddingOpen = False
 
-    -- | Settle the auction as an atomic DvP. The auctioneer gathers the bid
-    -- contract ids off-ledger (via PQS in production) and passes them in. In one
-    -- transaction the winning allocation pays the beneficiary, every losing
-    -- allocation is cancelled (refunded), and the result is recorded: either all
-    -- of that happens or none of it does.
+    -- | Settle the auction as an atomic DvP. The auctioneer gathers the bid contract
+    -- ids off-ledger (via PQS in production) and passes them in, together with the
+    -- private `AuctionRoster` it alone holds. In one transaction the winning
+    -- allocation pays the beneficiary, every losing allocation is cancelled
+    -- (refunded), and the result is recorded: either all of that happens or none of it.
     --
     -- LIVENESS: settlement depends on the auctioneer including every bid in `bidCids`
     -- and running `Settle` before `settleBy`. If it omits a bid or never settles in
@@ -327,11 +307,15 @@ template Auction
     choice Settle : ContractId AuctionResult
       with
         bidCids : [ContractId Bid]
+        roster : ContractId AuctionRoster
       controller auctioneer
       do
         assertMsg "close bidding before settling" (not biddingOpen)
         now <- getTime
         assertMsg "the settlement window has passed" (now <= settleBy)
+        r <- fetch roster
+        assertMsg "roster does not match these auction terms"
+          (r.auctioneer == auctioneer && r.auctionId == auctionId)
 
         -- De-duplicate the caller's list so a repeated id can't double-spend a bid.
         let uniqueCids =
@@ -342,7 +326,7 @@ template Auction
           assertMsg "bid does not belong to this auction"
             (bid.auctioneer == auctioneer && bid.auctionId == auctionId && bid.item == item)
           assertMsg "settled bid must come from an invited bidder"
-            (bid.bidder `elem` invited)
+            (bid.bidder `elem` r.invited)
           pure (cid, bid)
 
         -- A8: the ContractId de-dup above stops one bid being counted twice, but
@@ -371,6 +355,27 @@ template Auction
               item
               winner = winBid.bidder
               winningAmount = paid
+
+-- | The invited roster, signed by the auctioneer alone and observed by no bidder, so
+-- the participant set stays private to the auctioneer. `IssueBidRight` mints each
+-- invited bidder their own private `BidRight`; `Settle` takes this contract to confirm
+-- every settled bid came from an invited party.
+template AuctionRoster
+  with
+    auctioneer : Party
+    auctionId : Text
+    invited : [Party]
+  where
+    signatory auctioneer
+
+    -- | Issue one invited bidder their single-use right to bid.
+    nonconsuming choice IssueBidRight : ContractId BidRight
+      with
+        bidder : Party
+      controller auctioneer
+      do
+        assertMsg "rights can only be issued to invited bidders" (bidder `elem` invited)
+        create BidRight with auctioneer, auctionId, bidder
 
 -- | A single sealed bid, co-signed by the auctioneer and the bidder and nobody
 -- else: no other party can fetch it, query it, or learn that it exists. It

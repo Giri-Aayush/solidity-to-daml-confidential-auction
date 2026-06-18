@@ -23,15 +23,21 @@ minimal registry that implements them so the sample builds and runs offline:
 - **`CoinAllocation`**: *implements the CIP-0056 `Allocation` interface*, the
   standard's atomic-DvP primitive. Its `Allocation_ExecuteTransfer` pays the
   receiver; `Allocation_Cancel` / `_Withdraw` refund the sender.
-- **`Auction`**: owned by the auctioneer; invited bidders are observers. `PlaceBid`
-  consumes a single-use `BidRight`, locks the bid amount as a standard `Allocation`,
-  and records a `Bid`; `Settle` executes the winning allocation and cancels the
-  losers in one transaction, time-bounded by `settleBy`.
-- **`BidRight`**: a single-use right the auctioneer issues to a bidder. `PlaceBid`
-  consumes it, so it is good for exactly one bid: one bid per *right*, enforced
-  on-ledger. One bid per *bidder* then holds as long as the auctioneer issues one
-  right each (Canton has no *unique* contract keys to enforce that; 3.5 added
-  non-unique keys, but those can't enforce uniqueness).
+- **`AuctionTerms`**: the public terms (item, beneficiary, deadline, `biddingOpen`),
+  signed by the auctioneer alone and observed by *no* bidder. Bidders reach it only by
+  explicit disclosure (for `PlaceBid` / `FetchTerms`), so the participant set never
+  leaks. `Settle` lives here and, in one transaction, executes the winning allocation
+  and cancels the losers, time-bounded by `settleBy`.
+- **`AuctionRoster`**: the invited list, signed by the auctioneer alone and observed by
+  no bidder, so the roster stays private. `IssueBidRight` mints each invited bidder
+  their own `BidRight`; `Settle` takes the roster to confirm every settled bid came
+  from an invited party.
+- **`BidRight`**: a single-use, per-bidder invitation, signed by the auctioneer and
+  observed only by that one bidder. `PlaceBid` lives here and consumes it (so it is
+  good for exactly one bid: one bid per *right*, enforced on-ledger), reading the live
+  terms from a disclosed `AuctionTerms` so the bidder never witnesses the roster. One
+  bid per *bidder* then holds as long as the auctioneer issues one right each (Canton
+  has no *unique* contract keys to enforce that), and `Settle` re-checks it.
 - **`Bid`**: signed by the auctioneer *and one bidder*, and nobody else. That
   two-party signatory set is the entire privacy mechanism. Co-signing is also what
   lets the auctioneer settle while the bidder is offline: the bidder's authority,
@@ -145,11 +151,6 @@ WHERE t.entity_name = 'Bid';
   [PQS](https://docs.digitalasset.com/build/3.4/component-howtos/pqs/index.html)
   (`dpm pqs`, a PostgreSQL view of the ledger), since Canton has no unique-key lookups.
 - *Identity:* `auctionId` is a plain `Text`; production uses a guaranteed-unique id.
-- *Roster privacy:* the invited bidders all observe one shared `Auction`, so its
-  `invited` list is visible to every one of them. Bid amounts stay private; the
-  participant set does not. Production hides the roster too, with a per-bidder
-  invitation contract (each observed only by its own bidder) and an auctioneer-only
-  roster, so no shared contract carries the full list. Kept simple here on purpose.
 - *Divulgence:* a non-stakeholder never receives a `Bid`, so it cannot see one. A
   party can learn a contract by *witnessing* a transaction that uses it, but no
   bidder witnesses another's bid here; explicit disclosure (the `explicitDisclosure`
