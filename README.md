@@ -1,7 +1,7 @@
 # From Solidity to Daml: A Confidential Auction on Canton
 
 [![CI](https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction/actions/workflows/ci.yml/badge.svg)](https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-17_Foundry_%2B_8_Daml-2ea043?style=flat-square)](#run-it)
+[![tests](https://img.shields.io/badge/tests-17_Foundry_%2B_9_Daml-2ea043?style=flat-square)](#run-it)
 [![live demo](https://img.shields.io/badge/live_demo-canton--confidential.netlify.app-a78bfa?style=flat-square&logo=netlify&logoColor=white)](https://canton-confidential.netlify.app/)
 [![license](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](#license)
 
@@ -60,7 +60,7 @@ to the Solidity one you already know. A few terms you'll meet:
 | Path | What it is | Status |
 |---|---|---|
 | [`solidity/`](solidity/) | First-price sealed-bid auction via commit/reveal, with Foundry tests | ✅ 17/17 tests pass |
-| [`daml/`](daml/) | The same auction in Daml, private by construction, settled through the Canton Network Token Standard (CIP-0056) with on-ledger bid rights and Daml Script tests | ✅ 8/8 scripts pass |
+| [`daml/`](daml/) | The same auction in Daml, private by construction, settled through the Canton Network Token Standard (CIP-0056) with on-ledger bid rights and Daml Script tests | ✅ 9/9 scripts pass |
 | [`guide/solidity-to-daml.md`](guide/solidity-to-daml.md) | The translation guide: concept map, mental-model shift, side-by-side code | 📖 read this |
 
 **Start with the [guide](guide/solidity-to-daml.md).** Then read the two contracts
@@ -78,7 +78,8 @@ disclosed at all. Funds are held as the Canton Network Token Standard's `Holding
 and settled through its `Allocation` interface, so the winner pays the seller and
 losers are refunded in one atomic delivery-versus-payment; a single-use right gives
 one bid per right on-ledger, with one bid per bidder resting on the auctioneer
-issuing one right each. The Daml tests
+issuing one right each, and a registry-signed bid counter makes settlement provably
+complete, so the auctioneer cannot crown a winner over an omitted higher bid. The Daml tests
 prove the privacy claim by content (each bidder sees exactly their own bid, the
 auctioneer sees all) and run unchanged on the in-memory ledger and on a real Canton
 participant node.
@@ -113,7 +114,7 @@ Homebrew JDK on macOS, so you should not need to touch `PATH` to run the project
 git clone https://github.com/Giri-Aayush/solidity-to-daml-confidential-auction
 cd solidity-to-daml-confidential-auction
 
-make test     # both suites: Solidity (17) + Daml (8), the same thing CI runs
+make test     # both suites: Solidity (17) + Daml (9), the same thing CI runs
 make canton   # run the auction on a REAL Canton node: boots a sandbox, runs the live proof, cleans up
 make web      # open the explainer site locally (Next.js on :3000)
 ```
@@ -125,7 +126,7 @@ build is fully offline.
 
 ```bash
 cd solidity && forge test -vv   # 17 Foundry tests (Solidity 0.8.35)
-cd daml && dpm test             # 8 Daml Script tests, including the privacy proof
+cd daml && dpm test             # 9 Daml Script tests, including the privacy proof
 ```
 
 On macOS, running `dpm` directly (not via `make`) needs the Homebrew JDK on your
