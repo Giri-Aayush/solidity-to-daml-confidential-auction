@@ -38,7 +38,7 @@ chasing pull-payment refunds across transactions.
 
 ### The whole auction, at a glance
 
-Six templates, who signs what, and the bid-to-settle flow in one picture. The
+Eight templates, who signs what, and the bid-to-settle flow in one picture. The
 sections below walk through each piece; keep this map handy.
 
 ```mermaid
@@ -60,10 +60,12 @@ flowchart TD
     PB --> BD["Bid<br/>sig: auctioneer + bidder<br/>no one else can see it"]:::tmpl
     CO --> AL["CoinAllocation<br/>CIP-0056 Allocation = DvP"]:::tmpl
     BD -.->|carries| AL
+    PB -.->|bumps the count| TY["AuctionTally<br/>sig: registry, bid counter"]:::tmpl
 
     AUC ==>|CloseBidding, then Settle| ST{{"Settle: highest bid wins<br/>one atomic tx"}}
     AL -.-> ST
     AR -.->|roster check| ST
+    TY -.->|completeness check| ST
     ST -->|winner: AwardToBeneficiary| SE([Seller paid])
     ST -->|losers: Refund| RF([Losers refunded])
     ST --> RS["AuctionResult<br/>obs: winner only"]:::tmpl
