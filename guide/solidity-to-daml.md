@@ -212,6 +212,7 @@ means there's no global set to iterate. So winner selection works in two moves:
 ```daml
 choice Settle : ContractId AuctionResult          -- lives on AuctionTerms
   with bidCids : [ContractId Bid]; roster : ContractId AuctionRoster
+       tally : ContractId AuctionTally             -- the registry-signed bid counter
   controller auctioneer
   do
     assertMsg "close bidding before settling" (not biddingOpen)
@@ -225,6 +226,10 @@ choice Settle : ContractId AuctionResult          -- lives on AuctionTerms
       assertMsg "bid belongs to this auction, from an invited bidder"
         (bid.auctioneer == auctioneer && bid.auctionId == auctionId && bid.item == item && bid.bidder `elem` r.invited)
       pure (cid, bid)
+    -- completeness: the validated bids must number the registry's count, so the
+    -- auctioneer cannot omit a higher bid (it can't forge a Bid or reset the count)
+    td <- fetch tally
+    assertMsg "incomplete bid set: must settle every bid placed" (length bids == td.count)
     case sortOn (\(_, bid) -> negate bid.amount) bids of
       [] -> abort "cannot settle an auction with no bids"
       ((winCid, winBid) :: losers) -> do
@@ -232,7 +237,7 @@ choice Settle : ContractId AuctionResult          -- lives on AuctionTerms
         exercise winCid AwardToBeneficiary           -- winner's locked funds -> seller
         _ <- forA losers \(cid, _) -> exercise cid Refund  -- losers refunded, same tx
         create AuctionResult with
-          auctioneer; item; winner = winBid.bidder; winningAmount = winBid.amount
+          auctioneer; item; winner = winBid.bidder; winningAmount = winBid.amount; bidCount = td.count
 ```
 
 Each `Bid` carries the bidder's locked funds as a token-standard `Allocation` (the
@@ -245,6 +250,16 @@ loser is refunded, or nothing moves. That atomicity *is* delivery-versus-payment
 it replaces Solidity's escrow-then-`withdraw` pull-payment dance. The auctioneer can
 drive a co-signed bid's allocation *alone* because the bidder, by signing the `Bid`,
 pre-authorized exactly the allocation choices the standard requires.
+
+That `tally` line is what makes the winner *provably* correct rather than merely
+trusted. A `bidCids` list on its own proves nothing about completeness: the auctioneer
+could drop the true high bid and crown a lower one. The registry-signed `AuctionTally`
+counts every bid (it is bumped inside the registry-authorized `LockForBid`, so the
+auctioneer can neither forge nor reset it), and `Settle` requires the validated,
+invited, distinct bids to number exactly that count, so the set must be *all* live
+bids. The worst a misbehaving auctioneer can now do is stall, not crown the wrong
+winner. The catch, in section 8: this rests on the *neutral registry*, because a fully
+trustless count is impossible while bids stay private.
 
 ---
 
@@ -297,12 +312,26 @@ Honesty matters more than a clean story:
   issuing one right each (Daml 3 has no unique keys), and `Settle` re-checks it against
   the private `AuctionRoster`, which no bidder can see, so the participant set never
   leaks either.
+- **Winner-correctness, and its price.** `Settle` is handed a list of bids, and a list
+  alone proves nothing about completeness, so the registry-signed `AuctionTally` closes
+  the gap: it counts every bid under the registry's authority (the auctioneer can
+  neither forge nor reset it), and `Settle` requires the validated, invited, distinct
+  bids to number exactly that count, so the supplied set must be *all* live bids. A
+  misbehaving auctioneer therefore cannot crown a winner over an omitted higher bid; the
+  worst it can do is stall (then bidders reclaim). The trade-off is worth naming: the
+  count's trust rests on the *neutral registry*, not the interested auctioneer, because
+  a fully trustless count is impossible while bids stay private (only the auctioneer
+  sees every bid, and a bidder-signed counter would expose its signatories, leaking the
+  roster). That is the same privacy-versus-verifiability dial the EVM side turns the
+  other way: revealing every bid makes the winner publicly checkable but destroys
+  confidentiality. Every bid also contends on the one counter, the price of an on-ledger
+  completeness proof.
 - **Auctioneer liveness.** The refunds are atomic, but they only happen once the
-  auctioneer settles: `Settle` requires `now <= settleBy` and the auctioneer chooses
-  which bids to include. A bidder is not at its mercy, though: once `settleBy` passes,
-  `Bid.ReclaimAfterDeadline` lets the bidder withdraw their own funds without the
-  auctioneer. The reclaim and settlement windows are disjoint (`now > settleBy` vs
-  `now <= settleBy`), so a bid is never both settleable and reclaimable.
+  auctioneer settles: `Settle` requires `now <= settleBy`. A bidder is not at its mercy,
+  though: once `settleBy` passes, `Bid.ReclaimAfterDeadline` lets the bidder withdraw
+  their own funds without the auctioneer. The reclaim and settlement windows are
+  disjoint (`now > settleBy` vs `now <= settleBy`), so a bid is never both settleable
+  and reclaimable.
 - **Divulgence.** A non-stakeholder never receives a `Bid`, so it cannot see one. The
   one nuance: a party *can* learn a contract by witnessing a transaction that uses it
   ([divulgence](https://docs.digitalasset.com/overview/3.4/explanations/ledger-model/ledger-privacy.html)),
@@ -316,7 +345,7 @@ Honesty matters more than a clean story:
 # Solidity: 17 tests (0.8.35)
 cd solidity && forge test -vv
 
-# Daml: 8 scripts, including the privacy proof (Daml 3.4)
+# Daml: 9 scripts, including the privacy proof (Daml 3.4)
 cd daml && dpm test
 ```
 

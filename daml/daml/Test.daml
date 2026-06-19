@@ -23,9 +23,10 @@ fund : Party -> Party -> Decimal -> Script (ContractId AuctionCoin)
 fund registry owner amount =
   submit registry do createCmd AuctionCoin with registry, owner, amount, locked = False, lockObservers = []
 
--- Create the split auction: the public, roster-free `AuctionTerms` plus the private
--- `AuctionRoster`. The registry (issuer) is recorded on the terms but is a separate
--- party from the auctioneer (operator), who signs both contracts.
+-- Create the split auction: the public, roster-free `AuctionTerms`, the private
+-- `AuctionRoster` (auctioneer-only), and the registry-signed `AuctionTally` (the bid
+-- counter that makes settlement provably complete). The registry is a separate party
+-- from the auctioneer.
 mkAuction : Party -> Party -> Party -> [Party] -> Time -> Script (ContractId AuctionTerms, ContractId AuctionRoster)
 mkAuction registry auctioneer beneficiary invited settleBy = do
   terms <- submit auctioneer do
@@ -39,24 +40,38 @@ mkAuction registry auctioneer beneficiary invited settleBy = do
       biddingOpen = True
   roster <- submit auctioneer do
     createCmd AuctionRoster with auctioneer, auctionId = "PAINTING-2026", invited
+  _ <- submit registry do
+    createCmd AuctionTally with registry, auctioneer, auctionId = "PAINTING-2026", count = 0
   pure (terms, roster)
+
+-- The single active tally for the auction (the auctioneer observes it). Each bid
+-- archives and recreates it, so its cid changes; callers re-read it here.
+currentTally : Party -> Script (ContractId AuctionTally)
+currentTally auctioneer = do
+  ts <- query @AuctionTally auctioneer
+  case ts of
+    [(c, _)] -> pure c
+    _ -> abort ("expected exactly one tally; saw " <> show (length ts))
 
 -- Issue an invited bidder their single-use right to bid (off the private roster).
 invite : Party -> ContractId AuctionRoster -> Party -> Script (ContractId BidRight)
 invite auctioneer roster bidder =
   submit auctioneer do exerciseCmd roster IssueBidRight with bidder
 
--- Place a bid: the auctioneer discloses the roster-free terms to the bidder, who then
--- spends their own `BidRight`. The bidder never sees a contract carrying the roster.
+-- Place a bid: the auctioneer discloses the roster-free terms and the bid counter to
+-- the bidder, who then spends their own `BidRight`. The bidder never sees a contract
+-- carrying the roster.
 placeBid : Party -> ContractId AuctionTerms -> Party -> ContractId BidRight -> Decimal -> ContractId AuctionCoin -> Script (ContractId Bid)
 placeBid auctioneer terms bidder right amount funds = do
-  Some disc <- queryDisclosure auctioneer terms
-  submit (actAs bidder <> disclose disc) do
-    exerciseCmd right PlaceBid with terms, amount, funds
+  tally <- currentTally auctioneer
+  Some discTerms <- queryDisclosure auctioneer terms
+  Some discTally <- queryDisclosure auctioneer tally
+  submit (actAs bidder <> disclose discTerms <> disclose discTally) do
+    exerciseCmd right PlaceBid with terms, amount, funds, tally
 
 -- | Sealed bids stay private; settlement is an atomic DvP that pays the beneficiary
--- from the winner and refunds the losers. The roster stays private, and the auctioneer
--- (operator) is not the registry (issuer).
+-- from the winner and refunds the losers. The roster stays private, the auctioneer
+-- (operator) is not the registry (issuer), and the settlement is provably complete.
 privacyAndSettlement : Script ()
 privacyAndSettlement = script do
   auctioneer <- allocateParty "Auctioneer"
@@ -105,14 +120,16 @@ privacyAndSettlement = script do
   auctioneerView <- query @Bid auctioneer
   length auctioneerView === 3
 
-  -- Close bidding, then settle (passing the private roster).
+  -- Close bidding, then settle (passing the private roster and the bid counter).
   closedTerms <- submit auctioneer do exerciseCmd terms CloseBidding
+  tally <- currentTally auctioneer
   resultCid <- submit auctioneer do
-    exerciseCmd closedTerms Settle with bidCids = [aliceBid, bobBid, carolBid]; roster
+    exerciseCmd closedTerms Settle with bidCids = [aliceBid, bobBid, carolBid]; roster; tally
 
   Some result <- queryContractId auctioneer resultCid
   result.winner === bob
   result.winningAmount === 50.0
+  result.bidCount === 3  -- settlement covered every bid placed
 
   -- All bids were cleared.
   remaining <- query @Bid auctioneer
@@ -139,6 +156,34 @@ privacyAndSettlement = script do
 
   pure ()
 
+-- | Completeness: `Settle` must cover every bid the registry counted, so the
+-- auctioneer cannot crown a winner while omitting a (higher) bid. Settling a strict
+-- subset is rejected on-ledger.
+settleMustBeComplete : Script ()
+settleMustBeComplete = script do
+  auctioneer <- allocateParty "Auctioneer"
+  registry <- allocateParty "Registry"
+  seller <- allocateParty "Seller"
+  alice <- allocateParty "Alice"
+  bob <- allocateParty "Bob"
+  now <- getTime
+
+  aliceFunds <- fund registry alice 30.0
+  bobFunds <- fund registry bob 50.0
+  (terms, roster) <- mkAuction registry auctioneer seller [alice, bob] (addRelTime now (hours 24))
+
+  aliceRight <- invite auctioneer roster alice
+  bobRight <- invite auctioneer roster bob
+  aliceBid <- placeBid auctioneer terms alice aliceRight 30.0 aliceFunds
+  _bobBid <- placeBid auctioneer terms bob bobRight 50.0 bobFunds
+
+  closedTerms <- submit auctioneer do exerciseCmd terms CloseBidding
+  tally <- currentTally auctioneer
+  -- The auctioneer tries to settle with only Alice's lower bid, dropping Bob's higher
+  -- one. The tally counted 2 bids, so a 1-bid settlement is rejected: no wrong winner.
+  auctioneer `submitMustFail`
+    exerciseCmd closedTerms Settle with bidCids = [aliceBid]; roster; tally
+
 -- | One bid per *right* is enforced on-ledger: the single-use `BidRight` is
 -- consumed by the first bid, so a second bid has no right left to spend. And one
 -- bid per *bidder* is enforced at settlement: even if the auctioneer mints a
@@ -159,9 +204,10 @@ oneBidPerBidder = script do
   -- First bid consumes the right.
   firstBid <- placeBid auctioneer terms alice aliceRight 20.0 firstFunds
   -- Reusing the now-spent right is rejected by the ledger (one bid per right).
+  tally1 <- currentTally auctioneer
   Some disc <- queryDisclosure auctioneer terms
   (actAs alice <> disclose disc) `submitMustFail`
-    exerciseCmd aliceRight PlaceBid with terms, amount = 25.0, funds = secondFunds
+    exerciseCmd aliceRight PlaceBid with terms, amount = 25.0, funds = secondFunds, tally = tally1
 
   -- The auctioneer CAN mint a second right for the same bidder (IssueBidRight does
   -- not prevent it), so Alice places a second, distinct bid.
@@ -169,8 +215,9 @@ oneBidPerBidder = script do
   secondBid <- placeBid auctioneer terms alice aliceRight2 25.0 secondFunds
   -- But settlement refuses to count two bids from one bidder.
   closedTerms <- submit auctioneer do exerciseCmd terms CloseBidding
+  tally <- currentTally auctioneer
   auctioneer `submitMustFail`
-    exerciseCmd closedTerms Settle with bidCids = [firstBid, secondBid]; roster
+    exerciseCmd closedTerms Settle with bidCids = [firstBid, secondBid]; roster; tally
 
 -- | A party who was not invited cannot get a right, nor bid with someone else's.
 nonInvitedCannotBid : Script ()
@@ -190,10 +237,11 @@ nonInvitedCannotBid = script do
   -- Even handed an invited bidder's right, a non-invited party cannot bid: PlaceBid
   -- is controlled by the right's named bidder, so Mallory is not the controller.
   aliceRight <- invite auctioneer roster alice
+  tally <- currentTally auctioneer
   Some discT <- queryDisclosure auctioneer terms
   Some discR <- queryDisclosure auctioneer aliceRight
   (actAs mallory <> disclose discT <> disclose discR) `submitMustFail`
-    exerciseCmd aliceRight PlaceBid with terms, amount = 999.0, funds = malloryFunds
+    exerciseCmd aliceRight PlaceBid with terms, amount = 999.0, funds = malloryFunds, tally
 
 -- | Once the auctioneer closes bidding, late bids are rejected.
 closedBiddingRejectsLateBids : Script ()
@@ -209,9 +257,10 @@ closedBiddingRejectsLateBids = script do
 
   aliceRight <- invite auctioneer roster alice
   closedTerms <- submit auctioneer do exerciseCmd terms CloseBidding
+  tally <- currentTally auctioneer
   Some disc <- queryDisclosure auctioneer closedTerms
   (actAs alice <> disclose disc) `submitMustFail`
-    exerciseCmd aliceRight PlaceBid with terms = closedTerms, amount = 10.0, funds = aliceFunds
+    exerciseCmd aliceRight PlaceBid with terms = closedTerms, amount = 10.0, funds = aliceFunds, tally
 
 -- | Settlement is refused while bidding is still open.
 cannotSettleWhileOpen : Script ()
@@ -227,7 +276,8 @@ cannotSettleWhileOpen = script do
 
   aliceRight <- invite auctioneer roster alice
   aliceBid <- placeBid auctioneer terms alice aliceRight 10.0 aliceFunds
-  auctioneer `submitMustFail` exerciseCmd terms Settle with bidCids = [aliceBid]; roster
+  tally <- currentTally auctioneer
+  auctioneer `submitMustFail` exerciseCmd terms Settle with bidCids = [aliceBid]; roster; tally
 
 -- | Settlement after the deadline is rejected (time-bounded DvP).
 settlementRespectsDeadline : Script ()
@@ -244,9 +294,10 @@ settlementRespectsDeadline = script do
   aliceRight <- invite auctioneer roster alice
   aliceBid <- placeBid auctioneer terms alice aliceRight 10.0 aliceFunds
   closedTerms <- submit auctioneer do exerciseCmd terms CloseBidding
+  tally <- currentTally auctioneer
 
   passTime (hours 2) -- advance past settleBy
-  auctioneer `submitMustFail` exerciseCmd closedTerms Settle with bidCids = [aliceBid]; roster
+  auctioneer `submitMustFail` exerciseCmd closedTerms Settle with bidCids = [aliceBid]; roster; tally
 
 -- | Explicit disclosure: a party who is not a stakeholder can still use a contract as
 -- a command input if it is disclosed to them. Here a prospective bidder reads the

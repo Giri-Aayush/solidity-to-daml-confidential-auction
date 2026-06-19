@@ -27,12 +27,18 @@ minimal registry that implements them so the sample builds and runs offline:
 - **`AuctionTerms`**: the public terms (item, beneficiary, deadline, `biddingOpen`),
   signed by the auctioneer alone and observed by *no* bidder. Bidders reach it only by
   explicit disclosure (for `PlaceBid` / `FetchTerms`), so the participant set never
-  leaks. `Settle` lives here and, in one transaction, executes the winning allocation
-  and cancels the losers, time-bounded by `settleBy`.
+  leaks. `Settle` lives here and, in one transaction, checks the bid set is complete
+  (against `AuctionTally`), executes the winning allocation, and cancels the losers,
+  time-bounded by `settleBy`.
 - **`AuctionRoster`**: the invited list, signed by the auctioneer alone and observed by
   no bidder, so the roster stays private. `IssueBidRight` mints each invited bidder
   their own `BidRight`; `Settle` takes the roster to confirm every settled bid came
   from an invited party.
+- **`AuctionTally`**: a registry-signed bid counter, one per auction. `LockForBid` bumps
+  it once per bid under the registry's authority, so the auctioneer can neither forge nor
+  reset it; `Settle` requires the bids it settles to number exactly that count, which is
+  what makes the winner *provably* correct (the auctioneer cannot omit a higher bid and
+  crown a lower one). It names no bidder, so it leaks no roster.
 - **`BidRight`**: a single-use, per-bidder invitation, signed by the auctioneer and
   observed only by that one bidder. `PlaceBid` lives here and consumes it (so it is
   good for exactly one bid: one bid per *right*, enforced on-ledger), reading the live
@@ -44,7 +50,8 @@ minimal registry that implements them so the sample builds and runs offline:
   lets the auctioneer settle while the bidder is offline: the bidder's authority,
   which the standard `Allocation` choices require, is present because they signed.
 - **`AuctionResult`**: observed only by the winner, so losing bidders never learn
-  the clearing price.
+  the clearing price; it records the `bidCount` the (completeness-checked) settlement
+  covered.
 
 Bids are allocated to the auctioneer (the settlement executor), never to the
 beneficiary, so the seller never sees a losing bid; at settlement the winning
@@ -74,7 +81,8 @@ dpm build
 dpm test
 ```
 
-Eight scripts: `privacyAndSettlement` (privacy + token-standard DvP),
+Nine scripts: `privacyAndSettlement` (privacy + token-standard DvP),
+`settleMustBeComplete` (settling a strict subset is rejected on-ledger),
 `oneBidPerBidder` (on-ledger single bid), `nonInvitedCannotBid`,
 `closedBiddingRejectsLateBids`, `cannotSettleWhileOpen`, `settlementRespectsDeadline`,
 `deadlineReclaim` (bidder reclaim after the deadline), and `explicitDisclosure`
@@ -139,10 +147,18 @@ WHERE t.entity_name = 'Bid';
   instrument, no fees or governance); on the Canton Network you settle against the live
   Amulet (Canton Coin) registry through its `AllocationFactory`, but the issuer/operator
   split this sample shows is the real one.
-- *Auctioneer liveness:* settlement depends on the auctioneer settling before
-  `settleBy` and including every bid in `Settle`. If it does not, a bidder is not
-  stuck: once `settleBy` passes they call `Bid.ReclaimAfterDeadline` to withdraw their
-  own funds without the auctioneer (the reclaim and settlement windows are disjoint).
+- *Winner-correctness:* the auctioneer cannot omit a (higher) bid to crown a lower one.
+  The registry-signed `AuctionTally` counts every bid under the registry's authority (so
+  the auctioneer can neither forge nor reset it), and `Settle` requires the settled bids
+  to number exactly that count. Trust for the count rests on the NEUTRAL registry, not
+  the interested auctioneer; a fully trustless count is impossible while bids stay
+  private (a bidder-signed counter would leak the roster), the same privacy-versus-
+  verifiability trade the EVM reveal makes the other way. Every bid contends on the one
+  counter, the cost of an on-ledger completeness proof.
+- *Auctioneer liveness:* settlement still depends on the auctioneer running `Settle`
+  before `settleBy`. If it never does, a bidder is not stuck: once `settleBy` passes
+  they call `Bid.ReclaimAfterDeadline` to withdraw their own funds without the
+  auctioneer (the reclaim and settlement windows are disjoint).
 - *Network:* `dpm sandbox` is a single participant. Cross-organization privacy is
   enforced when each party is hosted on its own participant across a synchronizer;
   the per-party visibility this sample relies on is the same mechanism.
