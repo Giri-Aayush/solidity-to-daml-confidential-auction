@@ -1,6 +1,7 @@
 import { Hero } from "@/components/hero";
 import { LedgerDemo } from "@/components/ledger-demo";
 import { CodeContrast } from "@/components/code-contrast";
+import { WinnerCorrectness } from "@/components/winner-correctness";
 import { ConceptMap } from "@/components/concept-map";
 import { Lifecycle } from "@/components/lifecycle";
 import { RunIt } from "@/components/run-it";
@@ -32,6 +33,8 @@ export default function Home() {
           <LedgerDemo />
         </div>
       </section>
+
+      <WinnerCorrectness />
 
       <CodeContrast />
 

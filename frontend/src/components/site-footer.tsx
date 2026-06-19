@@ -4,6 +4,10 @@ const LINKS = [
   ["Translation guide", `${REPO}/blob/main/guide/solidity-to-daml.md`],
   ["Solidity contract", `${REPO}/tree/main/solidity`],
   ["Daml templates", `${REPO}/tree/main/daml`],
+  [
+    "Token standard (CIP-0056)",
+    "https://docs.digitalasset.com/integrate/devnet/token-standard.html",
+  ],
   ["Repository", REPO],
 ];
 
@@ -18,8 +22,9 @@ export function SiteFooter() {
             </p>
             <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
               A worked translation of a familiar EVM pattern into Canton&apos;s
-              Daml-based, privacy-preserving model. The simulated ledger above
-              mirrors the real Daml templates in the repo.
+              Daml-based, privacy-preserving model, settling against the Canton Network
+              Token Standard (CIP-0056). The simulated ledger above mirrors the real
+              Daml templates in the repo.
             </p>
           </div>
 
@@ -40,7 +45,7 @@ export function SiteFooter() {
 
         <hr className="rule my-8" />
         <p className="font-mono text-[0.7rem] text-ink-faint">
-          Built on Daml 3.4 (Canton) · Solidity 0.8.35 · Foundry · Next.js. MIT licensed.
+          Built on Daml 3.4 (Canton) · Canton Network Token Standard (CIP-0056) · Solidity 0.8.35 · Foundry · Next.js. MIT licensed.
         </p>
       </div>
     </footer>
