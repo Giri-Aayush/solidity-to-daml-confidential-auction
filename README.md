@@ -25,12 +25,11 @@ has no native currency, so value is held as the Canton Network Token Standard's
 `Holding` and moved through its `Allocation` interface; the Daml version runs more
 than twice the length but spends those lines very differently.)
 
-> Built as a developer-education artifact for OpenZeppelin's Canton stack: a
-> worked translation of a familiar EVM pattern into Canton's Daml-based,
+> A developer-education artifact for engineers coming to Canton from the EVM: a
+> worked translation of a familiar pattern into Canton's Daml-based,
 > privacy-preserving model, settling against the Canton Network Token Standard
-> (CIP-0056, the Canton Foundation token standard implemented by Splice, not an
-> OpenZeppelin one): a Confidential Auction reference implementation plus the guide
-> that teaches it.
+> (CIP-0056, the Canton Foundation token standard implemented by Splice): a
+> Confidential Auction reference implementation plus the guide that teaches it.
 
 ## New to Canton?
 
