@@ -148,7 +148,7 @@ export function Hero() {
         </div>
 
         <p className="rise mt-5 font-mono text-xs text-ink-faint" style={{ animationDelay: "480ms" }}>
-          built on the latest stack: daml 3.4 on canton · cip-0056 token standard · solidity 0.8.35
+          built on the latest stack: daml 3.4 on canton · canton network token standard (cip-0056) · solidity 0.8.35
         </p>
       </div>
     </header>
